@@ -9,6 +9,8 @@ import dotty.tools.dotc.core.Types.*
 import dotty.tools.dotc.core.StdNames.nme
 import dotty.tools.dotc.core.Symbols.*
 import dotty.tools.dotc.util.optional
+import dotty.tools.dotc.core.Types
+import dotty.tools.dotc.core.Definitions
 
 /** Matches a quoted tree against a quoted pattern tree.
  *  A quoted pattern tree may have type and term holes in addition to normal terms.
@@ -471,6 +473,24 @@ object QuoteMatcher {
      *  @param env Mapping between scrutinee and pattern variables
      */
     case OpenTree(tree: Tree, patternTpe: Type, args: List[Tree], env: Env)
+
+    /** The Definitions object */
+    def defn(using Context): Definitions = ctx.definitions
+
+    /*
+     * PR-17567 Remaining TODOs
+     * * [ ] Implicit / Contextual parameters
+     * * [ ] Nested Method Types
+     * * [ ] Erased Types
+     */
+    def adaptTypes(tpe: Type)(using Context): Type =
+      new Types.TypeMap {
+          def apply(tp: Types.Type): Types.Type = tp match
+            case tp: MethodType => {
+              return defn.FunctionOf(tp.paramInfos, tp.resultType)
+            }
+            case _ => mapOver(tp)
+      }.apply(tpe)
 
     /** Return the expression that was extracted from a hole.
      *
