@@ -528,14 +528,15 @@ object QuoteMatcher {
                  * * [x] cover the case of nested method call
                  * * [ ] contextual params?
                  * * [ ] erasure types?
-                 * * [ ] eta-expand only HOAS param methods
+                 * * [x] eta-expand only HOAS param methods
                  */
                 case Apply(methId: Ident, args) =>
-                  val fnId = env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
-                  ctx.typer.typed(
-                    untpd.Apply(
-                      untpd.Select(untpd.TypedSplice(fnId), nme.apply),
-                      args.map(untpd.TypedSplice(_))))
+                  env.get(tree.symbol).flatMap(argsMap.get)
+                    .map(fnId => ctx.typer.typed(
+                      untpd.Apply(
+                        untpd.Select(untpd.TypedSplice(fnId), nme.apply),
+                        args.map(untpd.TypedSplice(_)))))
+                    .getOrElse(super.transform(tree))
                 case Apply(fun, args) =>
                   val tfun = transform(fun)
                   val targs = transform(args)
