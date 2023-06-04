@@ -3,8 +3,8 @@ import scala.quoted.*
 inline def testExpr(inline body: Any) = ${ testExprImpl('body) }
 def testExprImpl(body: Expr[Any])(using Quotes): Expr[String] =
   body match
-    case '{ def g(y: Int) = "hello" * y; $a(g): String } =>
-      '{ $a((z:Int) => "this is " + z.toString()) }
+    case '{ def g(y: String) = "placeholder" + y; $a(g): String } =>
+      '{ $a((z:String) => "str_from_macro " + z) }
     case _ => Expr("not matched")
 
 // TODO issue-17105: Clean this up if not neccessary
