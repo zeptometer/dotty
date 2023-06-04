@@ -481,14 +481,16 @@ object QuoteMatcher {
     /*
      * PR-17567 Remaining TODOs
      * * [ ] Implicit / Contextual parameters
-     * * [ ] Nested Method Types
+     * * [x] Nested Method Types
      * * [ ] Erased Types
      */
     def adaptTypes(tpe: Type)(using Context): Type =
       new Types.TypeMap {
           def apply(tp: Types.Type): Types.Type = tp match
             case tp: MethodType => {
-              return defn.FunctionOf(tp.paramInfos, tp.resultType)
+              val paramInfos = tp.paramInfos map adaptTypes
+              val resultType = adaptTypes(tp.resultType)
+              return defn.FunctionOf(paramInfos, resultType)
             }
             case _ => mapOver(tp)
       }.apply(tpe)
@@ -523,9 +525,10 @@ object QuoteMatcher {
                  * because the type of `g` is `Int => Int` due to eta expansion.
                  *
                  * Remaining TODOs from issue-17105
-                 * * [ ] cover the case of nested method call
+                 * * [x] cover the case of nested method call
                  * * [ ] contextual params?
                  * * [ ] erasure types?
+                 * * [ ] eta-expand only HOAS param methods
                  */
                 case Apply(methId: Ident, args) =>
                   val fnId = env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
@@ -533,6 +536,17 @@ object QuoteMatcher {
                     untpd.Apply(
                       untpd.Select(untpd.TypedSplice(fnId), nme.apply),
                       args.map(untpd.TypedSplice(_))))
+                case Apply(fun, args) =>
+                  val tfun = transform(fun)
+                  val targs = transform(args)
+                  tfun.tpe match
+                    // TODO issue-17105: Is this pattern appropriate for methods?
+                    case tp: MethodOrPoly => cpy.Apply(tree)(tfun, targs)
+                    // TODO issue-17105: Appropriate pattern for function (appliable?) types?
+                    case _ => ctx.typer.typed(
+                                untpd.Apply(
+                                  untpd.Select(untpd.TypedSplice(tfun), nme.apply),
+                                  args map (untpd.TypedSplice(_))))
                 case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                 case tree => super.transform(tree)
           }.transform(tree)

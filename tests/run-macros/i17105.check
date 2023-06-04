@@ -1,2 +1,2 @@
-test single: (1st case arg1) outside
-test curried: (2nd case arg1, arg2) outside
+case single: (1st case 1st) outside
+case curried: (2nd case 1st, 2nd) outside
