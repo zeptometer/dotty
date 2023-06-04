@@ -1,1 +1,2 @@
-str_from_macro 1st 2nd
+test single: (1st case arg1) outside
+test curried: (2nd case arg1, arg2) outside
