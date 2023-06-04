@@ -7,6 +7,11 @@ def testExprImpl(body: Expr[Any])(using Quotes): Expr[String] =
       '{ $a((z: String) => s"[1st case] ${z}") }
     case '{ def g(y: String)(z: String) = "placeholder" + y; $a(g): String } =>
       '{ $a((z1: String) => (z2: String) =>  s"[2nd case] ${z1}, ${z2}") }
+    case '{ given i: String = "given"; def g(using s: String) = "placeholder"; $a(g, i): String } =>
+      '{ $a((s: String) => s"[3rd case] ${s}")(0) }
+    /* TODO issue-17105: This causes type error due to another issue from issue-17105 */
+    // case '{ def g(using s: String) = "placeholder"; $a(g) } =>
+    //   '{ $a((s: String) => s"[3rd case] ${s}") }
     case _ => Expr("not matched")
 
 // TODO issue-17105: Clean this up if not neccessary
