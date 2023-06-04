@@ -11,6 +11,7 @@ import dotty.tools.dotc.core.Symbols.*
 import dotty.tools.dotc.util.optional
 import dotty.tools.dotc.core.Types
 import dotty.tools.dotc.core.Definitions
+import dotty.tools.dotc.ast.untpd
 
 /** Matches a quoted tree against a quoted pattern tree.
  *  A quoted pattern tree may have type and term holes in addition to normal terms.
@@ -508,7 +509,7 @@ object QuoteMatcher {
           case Block(List(DefDef(nme.ANON_FUN, _, _, Apply(Ident(name), _))), _) => name.asTermName
           case arg => arg.symbol.name.asTermName
         }
-        val paramTypes = args.map(x => mapTypeHoles(x.tpe.widenTermRefExpr))
+        val paramTypes = args.map(x => adaptTypes(mapTypeHoles(x.tpe.widenTermRefExpr)))
         val methTpe = MethodType(names)(_ => paramTypes, _ => mapTypeHoles(patternTpe))
         val meth = newAnonFun(ctx.owner, methTpe)
         def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
@@ -516,6 +517,22 @@ object QuoteMatcher {
           val body = new TreeMap {
             override def transform(tree: Tree)(using Context): Tree =
               tree match
+                /*
+                 * When matching a method call `f(0)` against a HOAS pattern `p(g)` where
+                 * f has a method type `(x: Int): Int` and  `f` maps to `g`, `p` should be `g.apply(0)`
+                 * because the type of `g` is `Int => Int` due to eta expansion.
+                 *
+                 * Remaining TODOs from issue-17105
+                 * * [ ] cover the case of nested method call
+                 * * [ ] contextual params?
+                 * * [ ] erasure types?
+                 */
+                case Apply(methId: Ident, args) =>
+                  val fnId = env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
+                  ctx.typer.typed(
+                    untpd.Apply(
+                      untpd.Select(untpd.TypedSplice(fnId), nme.apply),
+                      args.map(untpd.TypedSplice(_))))
                 case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                 case tree => super.transform(tree)
           }.transform(tree)

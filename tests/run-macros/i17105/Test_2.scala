@@ -1,4 +1,2 @@
-@main def Test: Unit =
-  println(test1)
-  println(test2)
-  println(test3)
+@main def app: Unit =
+  testExpr { def f(x: Int) = "hello" * x; f(0) + "bye" }
