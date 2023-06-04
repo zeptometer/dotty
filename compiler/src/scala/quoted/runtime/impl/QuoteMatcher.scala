@@ -227,9 +227,8 @@ object QuoteMatcher {
             arg match
               case id: Ident => id
               case Apply(term, _) => getCapturedIdent(term)
-              case Block((ddef: DefDef) :: _, _) => getCapturedIdent(ddef.rhs)
-              // How should I deal with it?
-              case y => ???
+              case Block((ddef: DefDef) :: _, _: Closure) => getCapturedIdent(ddef.rhs)
+              case Typed(term, _) => getCapturedIdent(term)
 
           val env = summon[Env]
           val capturedIds = args.map(getCapturedIdent)
