@@ -553,7 +553,6 @@ object QuoteMatcher {
                                   args map (untpd.TypedSplice(_))))
                     // `fun` must be MethodType. Let the later process report the error.
                     case _ => super.transform(tree)
-                case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                 case tree => super.transform(tree)
           }.transform(tree)
           TreeOps(body).changeNonLocalOwners(meth)
