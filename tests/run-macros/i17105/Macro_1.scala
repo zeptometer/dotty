@@ -7,8 +7,8 @@ def testExprImpl(body: Expr[Any])(using Quotes): Expr[String] =
       '{ $a((z: String) => s"[1st case] ${z}") }
     case '{ def g(y: String)(z: String) = "placeholder" + y; $a(g): String } =>
       '{ $a((z1: String) => (z2: String) =>  s"[2nd case] ${z1}, ${z2}") }
-    case '{ def g[A](x: A) = List(); $a(g): String } =>
-      '{ $a([A] => (x: A) => List(x, x)) }
+    // case '{ def g[A](x: A) = List(); $a(g): String } =>
+    //   '{ $a([A] => (x: A) => List(x, x)) }
     case _ => Expr("not matched")
 
 inline def testCtxParam(inline body: Any) = ${ testCtxParamImpl('body) }

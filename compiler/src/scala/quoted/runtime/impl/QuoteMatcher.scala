@@ -9,9 +9,7 @@ import dotty.tools.dotc.core.Types.*
 import dotty.tools.dotc.core.StdNames.nme
 import dotty.tools.dotc.core.Symbols.*
 import dotty.tools.dotc.util.optional
-import dotty.tools.dotc.core.Types
 import dotty.tools.dotc.core.Definitions
-import dotty.tools.dotc.ast.untpd
 
 /** Matches a quoted tree against a quoted pattern tree.
  *  A quoted pattern tree may have type and term holes in addition to normal terms.
@@ -479,18 +477,15 @@ object QuoteMatcher {
 
     /*
      * PR-17567 Remaining TODOs
-     * * [ ] Implicit / Contextual parameters
+     * * [x] Implicit / Contextual parameters
      * * [x] Nested Method Types
      * * [ ] Erased Types
      */
     def adaptTypes(tpe: Type)(using Context): Type =
-      new Types.TypeMap {
-          def apply(tp: Types.Type): Types.Type = tp match
-            case tp: MethodType => {
-              val paramInfos = tp.paramInfos map adaptTypes
-              val resultType = adaptTypes(tp.resultType)
-              return defn.FunctionOf(paramInfos, resultType)
-            }
+      new TypeMap {
+          def apply(tp: Type): Type = tp match
+            case tp: MethodType =>
+              defn.FunctionOf(tp.paramInfos, apply(tp.resultType), tp.isImplicitMethod)
             case _ => mapOver(tp)
       }.apply(tpe)
 
@@ -529,30 +524,12 @@ object QuoteMatcher {
                  * * [ ] erasure types?
                  * * [x] eta-expand only HOAS param methods
                  */
-                case Apply(methId: Ident, args) =>
-                  env.get(tree.symbol).flatMap(argsMap.get)
-                    .map(fnId => ctx.typer.typed(
-                      untpd.Apply(
-                        untpd.Select(untpd.TypedSplice(fnId), nme.apply),
-                        args.map(untpd.TypedSplice(_)))))
-                    .getOrElse(super.transform(tree))
-                case Apply(fun, args) =>
-                  val tfun = transform(fun)
-                  val targs = transform(args)
-                  (fun.tpe, tfun.tpe) match
-                    // TODO issue-17105: Is this pattern appropriate for methods?
-                    case (_: MethodType, _: MethodType) => cpy.Apply(tree)(tfun, targs)
-                    /* If `fun` with MethodType get transformed to `tfun` with non-MethodType,
-                     * it means that `fun` get eta-expanded. `fun(args)` needs to be transformed
-                     * to `tfun.apply(args)`
-                     */
-                    // TODO issue-17105: Appropriate pattern for function (appliable?) types?
-                    case (_: MethodType, _) => ctx.typer.typed(
-                                untpd.Apply(
-                                  untpd.Select(untpd.TypedSplice(tfun), nme.apply),
-                                  args map (untpd.TypedSplice(_))))
-                    // `fun` must be MethodType. Let the later process report the error.
-                    case _ => super.transform(tree)
+                case Apply(_, _) if !tree.tpe.isInstanceOf[MethodicType] && env.contains(tree.symbol) =>
+                  def adaptMethodCalls(t: Tree): Tree = t match
+                    case id: Ident => env.get(id.symbol).flatMap(argsMap.get).getOrElse(t)
+                    case Apply(f, a) => adaptMethodCalls(f).select(nme.apply).appliedToArgs(a)
+
+                  adaptMethodCalls(tree)
                 case tree => super.transform(tree)
           }.transform(tree)
           TreeOps(body).changeNonLocalOwners(meth)
