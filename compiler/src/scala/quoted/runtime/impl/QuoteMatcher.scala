@@ -520,8 +520,8 @@ object QuoteMatcher {
               tree match
                 /*
                  * When matching a method call `f(0)` against a HOAS pattern `p(g)` where
-                 * f has a method type `(x: Int): Int` and  `f` maps to `g`, `p` should be `g.apply(0)`
-                 * because the type of `g` is `Int => Int` due to eta expansion.
+                 * f has a method type `(x: Int): Int` and  `f` maps to `g`, `p` should hold
+                 * `g.apply(0)` because the type of `g` is `Int => Int` due to eta expansion.
                  *
                  * Remaining TODOs from issue-17105
                  * * [x] cover the case of nested method call
@@ -539,14 +539,20 @@ object QuoteMatcher {
                 case Apply(fun, args) =>
                   val tfun = transform(fun)
                   val targs = transform(args)
-                  tfun.tpe match
+                  (fun.tpe, tfun.tpe) match
                     // TODO issue-17105: Is this pattern appropriate for methods?
-                    case tp: MethodOrPoly => cpy.Apply(tree)(tfun, targs)
+                    case (_: MethodType, _: MethodType) => cpy.Apply(tree)(tfun, targs)
+                    /* If `fun` with MethodType get transformed to `tfun` with non-MethodType,
+                     * it means that `fun` get eta-expanded. `fun(args)` needs to be transformed
+                     * to `tfun.apply(args)`
+                     */
                     // TODO issue-17105: Appropriate pattern for function (appliable?) types?
-                    case _ => ctx.typer.typed(
+                    case (_: MethodType, _) => ctx.typer.typed(
                                 untpd.Apply(
                                   untpd.Select(untpd.TypedSplice(tfun), nme.apply),
                                   args map (untpd.TypedSplice(_))))
+                    // `fun` must be MethodType. Let the later process report the error.
+                    case _ => super.transform(tree)
                 case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                 case tree => super.transform(tree)
           }.transform(tree)
