@@ -224,9 +224,9 @@ object QuoteMatcher {
           def getCapturedIdent(arg: Tree)(using Context): Ident =
             arg match
               case id: Ident => id
-              case Apply(term, _) => getCapturedIdent(term)
+              case Apply(fun, _) => getCapturedIdent(fun)
               case Block((ddef: DefDef) :: _, _: Closure) => getCapturedIdent(ddef.rhs)
-              case Typed(term, _) => getCapturedIdent(term)
+              case Typed(expr, _) => getCapturedIdent(expr)
 
           val env = summon[Env]
           val capturedIds = args.map(getCapturedIdent)
@@ -527,7 +527,7 @@ object QuoteMatcher {
                 case Apply(_, _) if !tree.tpe.isInstanceOf[MethodicType] && env.contains(tree.symbol) =>
                   def adaptMethodCalls(t: Tree): Tree = t match
                     case id: Ident => env.get(id.symbol).flatMap(argsMap.get).getOrElse(t)
-                    case Apply(f, a) => adaptMethodCalls(f).select(nme.apply).appliedToArgs(a)
+                    case Apply(fun, args) => adaptMethodCalls(fun).select(nme.apply).appliedToArgs(args)
 
                   adaptMethodCalls(tree)
                 case tree => super.transform(tree)
