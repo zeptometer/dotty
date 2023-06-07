@@ -530,6 +530,7 @@ object QuoteMatcher {
                     case Apply(fun, args) => adaptMethodCalls(fun).select(nme.apply).appliedToArgs(args)
 
                   adaptMethodCalls(tree)
+                case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                 case tree => super.transform(tree)
           }.transform(tree)
           TreeOps(body).changeNonLocalOwners(meth)
