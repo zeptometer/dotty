@@ -479,15 +479,15 @@ object QuoteMatcher {
      * PR-17567 Remaining TODOs
      * * [x] Implicit / Contextual parameters
      * * [x] Nested Method Types
+     * * [x] Refinment Types
      * * [ ] Erased Types
      */
     def adaptTypes(tpe: Type)(using Context): Type =
-      new TypeMap {
-          def apply(tp: Type): Type = tp match
-            case tp: MethodType =>
-              defn.FunctionOf(tp.paramInfos, apply(tp.resultType), tp.isImplicitMethod)
-            case _ => mapOver(tp)
-      }.apply(tpe)
+      tpe match {
+          case tp: MethodType =>
+              defn.FunctionOf(tp.paramInfos, adaptTypes(tp.resultType), tp.isImplicitMethod)
+          case tp => tp
+      }
 
     /** Return the expression that was extracted from a hole.
      *
