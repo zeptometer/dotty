@@ -364,7 +364,8 @@ object QuoteMatcher {
             case scrutinee @ DefDef(_, paramss1, tpt1, _) =>
               pattern match
                 case pattern @ DefDef(_, paramss2, tpt2, _) =>
-                  def rhsEnv: Env =
+                  // TODO 17105: "rhs" is no longer appropriate, let's rename...
+                  def defEnv: Env =
                     val paramSyms: List[(Symbol, Symbol)] =
                       for
                         (clause1, clause2) <- paramss1.zip(paramss2)
@@ -375,8 +376,8 @@ object QuoteMatcher {
                     val newEnv: List[(Symbol, Symbol)] = (scrutinee.symbol -> pattern.symbol) :: paramSyms
                     oldEnv ++ newEnv
                   matchLists(paramss1, paramss2)(_ =?= _)
-                    &&& tpt1 =?= tpt2
-                    &&& withEnv(rhsEnv)(scrutinee.rhs =?= pattern.rhs)
+                    &&& withEnv(defEnv)(tpt1 =?= tpt2)
+                    &&& withEnv(defEnv)(scrutinee.rhs =?= pattern.rhs)
                 case _ => notMatched
 
             case Closure(_, _, tpt1) =>
@@ -484,6 +485,13 @@ object QuoteMatcher {
      */
     def adaptTypes(tpe: Type)(using Context): Type =
       tpe match {
+          case tpe: MethodType if tpe.isResultDependent =>
+              RefinedType(
+                defn.FunctionOf(tpe.paramInfos, adaptTypes(tpe.nonDependentResultApprox), tpe.isImplicitMethod),
+                nme.apply,
+                tpe
+              )
+
           case tp: MethodType =>
               defn.FunctionOf(tp.paramInfos, adaptTypes(tp.resultType), tp.isImplicitMethod)
           case tp => tp
