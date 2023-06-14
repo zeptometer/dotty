@@ -364,20 +364,22 @@ object QuoteMatcher {
             case scrutinee @ DefDef(_, paramss1, tpt1, _) =>
               pattern match
                 case pattern @ DefDef(_, paramss2, tpt2, _) =>
-                  // TODO 17105: "rhs" is no longer appropriate, let's rename...
-                  def defEnv: Env =
-                    val paramSyms: List[(Symbol, Symbol)] =
-                      for
-                        (clause1, clause2) <- paramss1.zip(paramss2)
-                        (param1, param2) <- clause1.zip(clause2)
-                      yield
-                        param1.symbol -> param2.symbol
-                    val oldEnv: Env = summon[Env]
-                    val newEnv: List[(Symbol, Symbol)] = (scrutinee.symbol -> pattern.symbol) :: paramSyms
-                    oldEnv ++ newEnv
-                  matchLists(paramss1, paramss2)(_ =?= _)
-                    &&& withEnv(defEnv)(tpt1 =?= tpt2)
-                    &&& withEnv(defEnv)(scrutinee.rhs =?= pattern.rhs)
+                  def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
+                    (scparamss, ptparamss) match {
+                      case (scparams :: screst, ptparams :: ptrest) =>
+                        val mr1 = matchLists(scparams, ptparams)(_ =?= _)
+                        val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
+                        val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
+                        (resEnv, mr1 &&& mrrest)
+                      case (Nil, Nil) => (summon[Env], matched)
+                      case _ => notMatched
+                    }
+
+                  val (pEnv, pmatch) = matchParamss(paramss1, paramss2)
+                  val defEnv = pEnv + (scrutinee.symbol -> pattern.symbol)
+                  pmatch
+                  &&& withEnv(defEnv)(tpt1 =?= tpt2)
+                  &&& withEnv(defEnv)(scrutinee.rhs =?= pattern.rhs)
                 case _ => notMatched
 
             case Closure(_, _, tpt1) =>
@@ -397,22 +399,6 @@ object QuoteMatcher {
             // No Match
             case _ =>
               notMatched
-
-      if (debug && res == notMatched)
-        val quotes = QuotesImpl()
-        println(
-          s""">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-              |Scrutinee
-              |  ${scrutinee.show}
-              |did not match pattern
-              |  ${pattern.show}
-              |
-              |with environment: ${summon[Env]}
-              |
-              |Scrutinee: ${quotes.reflect.Printer.TreeStructure.show(scrutinee.asInstanceOf)}
-              |Pattern: ${quotes.reflect.Printer.TreeStructure.show(pattern.asInstanceOf)}
-              |
-              |""".stripMargin)
 
       res
     end =?=
@@ -546,7 +532,7 @@ object QuoteMatcher {
         val hoasClosure = Closure(meth, bodyFn)
         new ExprImpl(hoasClosure, spliceScope)
 
-  private inline def notMatched: optional[MatchingExprs] =
+  private inline def notMatched[T]: optional[T] =
     optional.break()
 
   private inline def matched: MatchingExprs =
