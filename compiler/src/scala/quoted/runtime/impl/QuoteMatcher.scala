@@ -499,7 +499,7 @@ object QuoteMatcher {
           case Block(List(DefDef(nme.ANON_FUN, _, _, Apply(Ident(name), _))), _) => name.asTermName
           case arg => arg.symbol.name.asTermName
         }
-        val paramTypes = argTypes.map(mapTypeHoles)
+        val paramTypes = argTypes.map(tpe => mapTypeHoles(tpe.widenTermRefExpr))
         val methTpe = MethodType(names)(_ => paramTypes, _ => mapTypeHoles(patternTpe))
         val meth = newAnonFun(ctx.owner, methTpe)
         def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
