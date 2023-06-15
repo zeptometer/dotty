@@ -167,6 +167,25 @@ object QuoteMatcher {
       val scrutinee = normalize(scrutinee0)
       val pattern = normalize(pattern0)
 
+      inline def notMatched[T]: optional[T] =
+        if (debug)
+          val quotes = QuotesImpl()
+          println(
+            s""">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+                |Scrutinee
+                |  ${scrutinee.show}
+                |did not match pattern
+                |  ${pattern.show}
+                |
+                |with environment: ${summon[Env]}
+                |
+                |Scrutinee: ${quotes.reflect.Printer.TreeStructure.show(scrutinee.asInstanceOf)}
+                |Pattern: ${quotes.reflect.Printer.TreeStructure.show(pattern.asInstanceOf)}
+                |
+                |""".stripMargin)
+        optional.break()
+
+
       /** Check that both are `val` or both are `lazy val` or both are `var` **/
       def checkValFlags(): Boolean = {
         val sFlags = scrutinee.symbol.flags
