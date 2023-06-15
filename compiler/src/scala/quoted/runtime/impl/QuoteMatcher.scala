@@ -516,12 +516,6 @@ object QuoteMatcher {
                  * When matching a method call `f(0)` against a HOAS pattern `p(g)` where
                  * f has a method type `(x: Int): Int` and  `f` maps to `g`, `p` should hold
                  * `g.apply(0)` because the type of `g` is `Int => Int` due to eta expansion.
-                 *
-                 * Remaining TODOs from issue-17105
-                 * * [x] cover the case of nested method call
-                 * * [ ] contextual params?
-                 * * [ ] erasure types?
-                 * * [x] eta-expand only HOAS param methods
                  */
                 case Apply(_, _) if !tree.tpe.isInstanceOf[MethodicType] && env.contains(tree.symbol) =>
                   def adaptMethodCalls(t: Tree): Tree = t match
