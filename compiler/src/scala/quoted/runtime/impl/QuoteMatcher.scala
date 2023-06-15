@@ -503,11 +503,7 @@ object QuoteMatcher {
       case MatchResult.ClosedTree(tree) =>
         new ExprImpl(tree, spliceScope)
       case MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, env) =>
-        val names: List[TermName] = argIds.map {
-          // TODO 17105: Do we need this case?
-          case Block(List(DefDef(nme.ANON_FUN, _, _, Apply(Ident(name), _))), _) => name.asTermName
-          case arg => arg.symbol.name.asTermName
-        }
+        val names: List[TermName] = argIds.map(_.symbol.name.asTermName)
         val paramTypes = argTypes.map(tpe => mapTypeHoles(tpe.widenTermRefExpr))
         val methTpe = MethodType(names)(_ => paramTypes, _ => mapTypeHoles(patternTpe))
         val meth = newAnonFun(ctx.owner, methTpe)
