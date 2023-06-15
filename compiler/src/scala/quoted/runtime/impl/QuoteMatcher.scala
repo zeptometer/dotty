@@ -253,7 +253,7 @@ object QuoteMatcher {
           val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v))
           withEnv(captureEnv) {
             scrutinee match
-              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, env)
+              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), env)
               case _ => notMatched
           }
 
@@ -473,34 +473,14 @@ object QuoteMatcher {
      *
      *  @param tree Scrutinee sub-tree that matched
      *  @param patternTpe Type of the pattern hole (from the pattern)
-     *  @param args HOAS arguments (from the pattern)
+     *  @param argIds Identifiers of HOAS arguments (from the pattern)
+     *  @param argTypes Eta-expanded types of HOAS arguments (from the pattern)
      *  @param env Mapping between scrutinee and pattern variables
      */
-    case OpenTree(tree: Tree, patternTpe: Type, args: List[Tree], env: Env)
+    case OpenTree(tree: Tree, patternTpe: Type, argIds: List[Tree], argTypes: List[Type], env: Env)
 
     /** The Definitions object */
     def defn(using Context): Definitions = ctx.definitions
-
-    /*
-     * PR-17567 Remaining TODOs
-     * * [x] Implicit / Contextual parameters
-     * * [x] Nested Method Types
-     * * [x] Refinment Types
-     * * [ ] Erased Types
-     */
-    def adaptTypes(tpe: Type)(using Context): Type =
-      tpe match {
-          case tpe: MethodType if tpe.isResultDependent =>
-              RefinedType(
-                defn.FunctionOf(tpe.paramInfos, adaptTypes(tpe.nonDependentResultApprox), tpe.isImplicitMethod),
-                nme.apply,
-                tpe
-              )
-
-          case tp: MethodType =>
-              defn.FunctionOf(tp.paramInfos, adaptTypes(tp.resultType), tp.isImplicitMethod)
-          case tp => tp
-      }
 
     /** Return the expression that was extracted from a hole.
      *
@@ -513,16 +493,17 @@ object QuoteMatcher {
     def toExpr(mapTypeHoles: TypeMap, spliceScope: Scope)(using Context): Expr[Any] = this match
       case MatchResult.ClosedTree(tree) =>
         new ExprImpl(tree, spliceScope)
-      case MatchResult.OpenTree(tree, patternTpe, args, env) =>
-        val names: List[TermName] = args.map {
+      case MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, env) =>
+        val names: List[TermName] = argIds.map {
+          // TODO 17105: Do we need this case?
           case Block(List(DefDef(nme.ANON_FUN, _, _, Apply(Ident(name), _))), _) => name.asTermName
           case arg => arg.symbol.name.asTermName
         }
-        val paramTypes = args.map(x => adaptTypes(mapTypeHoles(x.tpe.widenTermRefExpr)))
+        val paramTypes = argTypes.map(mapTypeHoles)
         val methTpe = MethodType(names)(_ => paramTypes, _ => mapTypeHoles(patternTpe))
         val meth = newAnonFun(ctx.owner, methTpe)
         def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
-          val argsMap = args.view.map(_.symbol).zip(lambdaArgss.head).toMap
+          val argsMap = argIds.view.map(_.symbol).zip(lambdaArgss.head).toMap
           val body = new TreeMap {
             override def transform(tree: Tree)(using Context): Tree =
               tree match
@@ -560,8 +541,8 @@ object QuoteMatcher {
   private inline def matched(tree: Tree)(using Context): MatchingExprs =
     Seq(MatchResult.ClosedTree(tree))
 
-  private def matchedOpen(tree: Tree, patternTpe: Type, args: List[Tree], env: Env)(using Context): MatchingExprs =
-    Seq(MatchResult.OpenTree(tree, patternTpe, args, env))
+  private def matchedOpen(tree: Tree, patternTpe: Type, argIds: List[Tree], argTypes: List[Type], env: Env)(using Context): MatchingExprs =
+    Seq(MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, env))
 
   extension (self: MatchingExprs)
       /** Concatenates the contents of two successful matchings */
