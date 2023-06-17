@@ -383,11 +383,14 @@ object QuoteMatcher {
             case scrutinee @ DefDef(_, paramss1, tpt1, _) =>
               pattern match
                 case pattern @ DefDef(_, paramss2, tpt2, _) =>
-                  def matchErasedParams(scrutinee: DefDef, pattern: DefDef): optional[MatchingExprs] =
-                    (scrutinee.tpe.widenTermRefExpr, pattern.tpe.widenTermRefExpr) match
+                  def matchErasedParams(sctype: Type, pttype: Type): optional[MatchingExprs] =
+                    (sctype, pttype) match
                       case (sctpe: MethodType, pttpe: MethodType) =>
-                        if sctpe.erasedParams.sameElements(pttpe.erasedParams) then matched else notMatched
-                      case _ => notMatched
+                        if sctpe.erasedParams.sameElements(pttpe.erasedParams) then
+                          matchErasedParams(sctpe.resType, pttpe.resType)
+                        else
+                          notMatched
+                      case _ => matched
 
                   def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
                     (scparamss, ptparamss) match {
@@ -400,7 +403,7 @@ object QuoteMatcher {
                       case _ => notMatched
                     }
 
-                  val ematch = matchErasedParams(scrutinee, pattern)
+                  val ematch = matchErasedParams(scrutinee.tpe.widenTermRefExpr, pattern.tpe.widenTermRefExpr)
                   val (pEnv, pmatch) = matchParamss(paramss1, paramss2)
                   val defEnv = pEnv + (scrutinee.symbol -> pattern.symbol)
 
