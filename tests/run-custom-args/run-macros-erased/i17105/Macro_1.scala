@@ -9,12 +9,17 @@ def testExprImpl(body: Expr[Any])(using Quotes): Expr[String] =
     case '{ def erasedfn(erased y: String) = "placeholder"; $a(erasedfn): String } =>
       '{ $a((erased z: String) => "[erased case]") }
     case '{
-      def erasedfn(a: Int)(b: Int): Int = a
+      def erasedfn(a: String, b: String)(c: String, d: String): String = a
       $y(erasedfn): String
     } => Expr("This should not match")
     case '{
-      def erasedfn(a: Int)(erased b: Int): Int = a
+      def erasedfn(a: String, erased b: String)(erased c: String, d: String): String = a
       $y(erasedfn): String
     } =>
-      '{ $y((a: Int) => (erased b: Int) => -a) }
+      '{ $y((a: String, erased b: String) => (erased c: String, d: String) => d) }
+    case '{
+      def erasedfn(a: String, erased b: String)(c: String, erased d: String): String = a
+      $y(erasedfn): String
+    } =>
+      '{ $y((a: String, erased b: String) => (c: String, erased d: String) => c) }
     case _ => Expr("not matched")

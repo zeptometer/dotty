@@ -1,2 +1,3 @@
 case erased: [erased case]
-case erased nested: -10
+case erased nested: c
+case erased nested 2: d
