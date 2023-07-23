@@ -74,7 +74,7 @@ object QuotePatterns:
    *    .ExprMatch // or TypeMatch
    *    .unapply[
    *      KCons[t1 >: l1 <: b1, ...KCons[tn >: ln <: bn, KNil]...], // scala.quoted.runtime.{KCons, KNil}
-   *      (T1, T2, (A1, ..., An) => T3, ...)
+   *      (Expr[T1], Expr[T2], Expr[(A1, ..., An) => T3], ...)
    *    ](
    *      '{
    *        type t1' >: l1' <: b1'
