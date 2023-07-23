@@ -131,13 +131,16 @@ class ReTyper(nestingLevel: Int = 0) extends Typer(nestingLevel) with ReChecking
   override def typedSplicePattern(tree: untpd.SplicePattern, pt: Type)(using Context): Tree =
     assertTyped(tree)
     val args1 = tree.args.mapconserve(typedExpr(_))
+    val typeargs1 = tree.typeargs.mapconserve(typedType(_))
+    // TODO-18217: Generate polytype when typeagrs1 is not empty
     val patternTpe =
       if args1.isEmpty then tree.typeOpt
       else defn.FunctionType(args1.size).appliedTo(args1.map(_.tpe) :+ tree.typeOpt)
     val bodyCtx = spliceContext.addMode(Mode.Pattern).retractMode(Mode.QuotedPatternBits)
     val body1 = typed(tree.body, defn.QuotedExprClass.typeRef.appliedTo(patternTpe))(using bodyCtx)
+    // TODO-18217: Not necessarry?
     val args = tree.args.mapconserve(typedExpr(_))
-    untpd.cpy.SplicePattern(tree)(body1, args1).withType(tree.typeOpt)
+    untpd.cpy.SplicePattern(tree)(body1, typeargs1, args1).withType(tree.typeOpt)
 
   override def typedHole(tree: untpd.Hole, pt: Type)(using Context): Tree =
     promote(tree)

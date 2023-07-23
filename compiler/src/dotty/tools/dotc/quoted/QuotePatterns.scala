@@ -197,10 +197,10 @@ object QuotePatterns:
     val patBuf = new mutable.ListBuffer[Tree]
     val shape = new tpd.TreeMap {
       override def transform(tree: Tree)(using Context) = tree match {
-        case Typed(splice @ SplicePattern(pat, Nil), tpt) if !tpt.tpe.derivesFrom(defn.RepeatedParamClass) =>
+        case Typed(splice @ SplicePattern(pat, Nil, Nil), tpt) if !tpt.tpe.derivesFrom(defn.RepeatedParamClass) =>
           transform(tpt) // Collect type bindings
           transform(splice)
-        case SplicePattern(pat, args) =>
+        case SplicePattern(pat, typeargs, args) =>
           val patType = pat.tpe.widen
           val patType1 = patType.translateFromRepeated(toArray = false)
           val pat1 = if (patType eq patType1) pat else pat.withType(patType1)
@@ -238,11 +238,12 @@ object QuotePatterns:
             case pat: Bind => !pat.symbol.name.is(PatMatGivenVarName)
             case _ => true
           }
+          // TODO-18271: Support for typeargs?
           override def transform(tree: tpd.Tree)(using Context): tpd.Tree = tree match
             case TypeApply(patternHole, _) if patternHole.symbol == defn.QuotedRuntimePatterns_patternHole =>
-              cpy.SplicePattern(tree)(patternIterator.next(), Nil)
+              cpy.SplicePattern(tree)(patternIterator.next(), Nil, Nil)
             case Apply(patternHole, SeqLiteral(args, _) :: Nil) if patternHole.symbol == defn.QuotedRuntimePatterns_higherOrderHole =>
-              cpy.SplicePattern(tree)(patternIterator.next(), args)
+              cpy.SplicePattern(tree)(patternIterator.next(), Nil, args)
             case _ => super.transform(tree)
         }
         val body = addPattenSplice.transform(shape) match

@@ -119,14 +119,23 @@ trait QuotesAndSplices {
             EmptyTree
         }
       }
+      val typedTypeargs = tree.typeargs.map {
+        // TODO-18271: What is representation of type variables?
+        case arg: untpd.Ident =>
+          typedType(arg) // TODO-18271: Is this appropriate?
+        case arg =>
+          report.error("Open pattern expected an identifier", arg.srcPos)
+          EmptyTree
+      }
       for arg <- typedArgs if arg.symbol.is(Mutable) do // TODO support these patterns. Possibly using scala.quoted.util.Var
         report.error("References to `var`s cannot be used in higher-order pattern", arg.srcPos)
       val argTypes = typedArgs.map(_.tpe.widenTermRefExpr)
+      // TODO-18271: Generate polyType if typedTypeargs is not empty
       val patType = if tree.args.isEmpty then pt else defn.FunctionOf(argTypes, pt)
       val pat = typedPattern(tree.body, defn.QuotedExprClass.typeRef.appliedTo(patType))(using quotePatternSpliceContext)
       val baseType = pat.tpe.baseType(defn.QuotedExprClass)
       val argType = if baseType.exists then baseType.argTypesHi.head else defn.NothingType
-      untpd.cpy.SplicePattern(tree)(pat, typedArgs).withType(pt)
+      untpd.cpy.SplicePattern(tree)(pat, typedTypeargs, typedArgs).withType(pt)
     else
       errorTree(tree, em"Type must be fully defined.\nConsider annotating the splice using a type ascription:\n  ($tree: XYZ).", tree.body.srcPos)
   }
@@ -151,9 +160,10 @@ trait QuotesAndSplices {
       val splice1 = typedSplicePattern(splice, defn.FunctionOf(argTypes, pt))
       untpd.cpy.Apply(tree)(splice1.select(nme.apply), typedArgs).withType(pt)
     else // $x(...) higher-order quasipattern
+      // TODO-18271: Case for highr-order quasi-quote pattern with type params
       if args.isEmpty then
          report.error("Missing arguments for open pattern", tree.srcPos)
-      typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, args), pt)
+      typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, Nil, args), pt)
   }
 
   /** Type check a type binding reference in a quoted pattern.
