@@ -205,8 +205,16 @@ object QuotePatterns:
           val patType1 = patType.translateFromRepeated(toArray = false)
           val pat1 = if (patType eq patType1) pat else pat.withType(patType1)
           patBuf += pat1
-          if args.isEmpty then ref(defn.QuotedRuntimePatterns_patternHole.termRef).appliedToType(tree.tpe).withSpan(tree.span)
-          else ref(defn.QuotedRuntimePatterns_higherOrderHole.termRef).appliedToType(tree.tpe).appliedTo(SeqLiteral(args, TypeTree(defn.AnyType))).withSpan(tree.span)
+          if typeargs.isEmpty && args.isEmpty then ref(defn.QuotedRuntimePatterns_patternHole.termRef).appliedToType(tree.tpe).withSpan(tree.span)
+          else if typeargs.isEmpty then
+            ref(defn.QuotedRuntimePatterns_higherOrderHole.termRef)
+              .appliedToType(tree.tpe)
+              .appliedTo(SeqLiteral(args, TypeTree(defn.AnyType)))
+              .withSpan(tree.span)
+          else ref(defn.QuotedRuntimePatterns_higherOrderHoleWithTypes.termRef)
+            .appliedToTypeTrees(List(TypeTree(tree.tpe), tpd.hkNestedPairsTypeTree(typeargs)))
+            .appliedTo(SeqLiteral(args, TypeTree(defn.AnyType)))
+            .withSpan(tree.span)
         case _ =>
           super.transform(tree)
       }
