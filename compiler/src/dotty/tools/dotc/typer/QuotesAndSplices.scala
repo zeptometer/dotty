@@ -166,6 +166,32 @@ trait QuotesAndSplices {
       typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, Nil, args), pt)
   }
 
+  /** Types a splice applied to some type arguments and arguments
+   *   `$f[targs1, ..., targsn](arg1, ..., argn)` in a quote pattern.
+   *
+   * TODO-18217: Remove follwing notes on complete
+   * Refer to: typedTypeApply
+   */
+  def typedAppliedSpliceWithTypes(tree: untpd.Apply, pt: Type)(using Context): Tree = {
+    assert(ctx.mode.is(Mode.QuotedPattern))
+    val untpd.Apply(typeApplyTree @ untpd.TypeApply(splice: untpd.SplicePattern, typeargs), args) = tree: @unchecked
+    def isInBraces: Boolean = splice.span.end != splice.body.span.end
+    if isInBraces then // ${x}[...](...) match an application
+      // TODO-18127: typedTypeApply cares about named arguments. Do we want to care as well?
+      val typedTypeargs = typeargs.map(arg => typedType(arg))
+      // TODO-18217: Why do we use typedExpr here?
+      val typedArgs = args.map(arg => typedExpr(arg))
+      val argTypes = typedArgs.map(_.tpe.widenTermRefExpr)
+      val splice1 = typedSplicePattern(splice, ProtoTypes.PolyProto(typedArgs, defn.FunctionOf(argTypes, pt)))
+      val typedTypeApply = untpd.cpy.TypeApply(typeApplyTree)(splice1.select(nme.apply), typedTypeargs)
+      untpd.cpy.Apply(tree)(typedTypeApply, typedArgs).withType(pt)
+    else // $x(...) higher-order quasipattern
+      // TODO-18271: Case for highr-order quasi-quote pattern with type params
+      if typeargs.isEmpty || args.isEmpty then
+         report.error("Missing arguments for open pattern", tree.srcPos)
+      typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, typeargs, args), pt)
+  }
+
   /** Type check a type binding reference in a quoted pattern.
    *
    *  If no binding exists with that name, this becomes the definition of a new type binding.
