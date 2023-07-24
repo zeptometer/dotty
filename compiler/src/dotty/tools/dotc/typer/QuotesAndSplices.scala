@@ -192,6 +192,10 @@ trait QuotesAndSplices {
       typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, typeargs, args), pt)
   }
 
+  def typedTypeAppliedSplice(tree: untpd.TypeApply, pt: Type)(using Context): Tree = {
+    typedAppliedSpliceWithTypes(untpd.Apply(tree, Nil), pt)
+  }
+
   /** Type check a type binding reference in a quoted pattern.
    *
    *  If no binding exists with that name, this becomes the definition of a new type binding.

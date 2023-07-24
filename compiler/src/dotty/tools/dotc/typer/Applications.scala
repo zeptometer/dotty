@@ -1097,6 +1097,7 @@ trait Applications extends Compatibility {
         }
       else {
         val app = tree.fun match
+          case untpd.TypeApply(_: untpd.SplicePattern, _) => typedAppliedSpliceWithTypes(tree, pt)
           case _: untpd.SplicePattern => typedAppliedSplice(tree, pt)
           case _ => realApply
         app match {
@@ -1150,6 +1151,10 @@ trait Applications extends Compatibility {
     val isNamed = hasNamedArg(tree.args)
     val typedArgs = if (isNamed) typedNamedArgs(tree.args) else tree.args.mapconserve(typedType(_))
     record("typedTypeApply")
+    tree.fun match
+      case _: untpd.SplicePattern => return typedTypeAppliedSplice(tree, pt)
+      case _ =>
+
     typedExpr(tree.fun, PolyProto(typedArgs, pt)) match {
       case fun: TypeApply if !ctx.isAfterTyper =>
         val function = fun.fun
