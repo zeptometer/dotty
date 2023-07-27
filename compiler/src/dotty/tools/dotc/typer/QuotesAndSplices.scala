@@ -378,23 +378,20 @@ object QuotesAndSplices {
           super.transform(tree)
     end TreeMapWithVariance
 
-  // TODO-18271: Seems we can use PolyProto instead?
   object PolyFunctionOf {
     /**
-      * Return a poly-type + function type [$typeargs] => ($args) => ($resultType)
+      * Return a poly-type + method type [$typeargs] => ($args) => ($resultType)
       * where typeargs occur in args and resulttype
-      *
-      * @param typeargs
-      * @param args
-      * @param resultType
-      * @return
       */
     def apply(typeargs: List[Type], args: List[Type], resultType: Type)(using Context): Type =
       val typeargs1 = PolyType.syntheticParamNames(typeargs.length)
-      // TODO-18271 What would be good bounds?
-      val paraminfosExp = (_: PolyType) => typeargs map (_ => TypeBounds.empty)
-      // TODO-18271 Replace type args occurence in args with typeargs1?
-      val resultTypeExp = (_: PolyType) => defn.FunctionOf(args, resultType)
+      val paraminfosExp = (_: PolyType) => typeargs map (_.bounds)
+      val resultTypeExp = (pt: PolyType) => {
+        val fromSymbols = typeargs map (_.typeSymbol)
+        val args1 = args map (_.subst(fromSymbols, pt.paramRefs))
+        val resultType1 = resultType.subst(fromSymbols, pt.paramRefs)
+        MethodType(args1, resultType)
+      }
       val tpe = PolyType(typeargs1)(paraminfosExp, resultTypeExp)
       RefinedType(defn.PolyFunctionType, nme.apply, tpe)
   }
