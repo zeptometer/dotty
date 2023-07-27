@@ -385,14 +385,19 @@ object QuotesAndSplices {
       */
     def apply(typeargs: List[Type], args: List[Type], resultType: Type)(using Context): Type =
       val typeargs1 = PolyType.syntheticParamNames(typeargs.length)
-      val paraminfosExp = (_: PolyType) => typeargs map (_.bounds)
+      val bounds = typeargs map { tpe =>
+        ctx.gadt.fullBounds(tpe.typeSymbol) match
+          case b:TypeBounds => b
+          case _ => TypeBounds.empty
+        }
+      println(s"bounds = ${bounds map (_.show)}")
       val resultTypeExp = (pt: PolyType) => {
         val fromSymbols = typeargs map (_.typeSymbol)
         val args1 = args map (_.subst(fromSymbols, pt.paramRefs))
         val resultType1 = resultType.subst(fromSymbols, pt.paramRefs)
         MethodType(args1, resultType)
       }
-      val tpe = PolyType(typeargs1)(paraminfosExp, resultTypeExp)
+      val tpe = PolyType(typeargs1)(_ => bounds, resultTypeExp)
       RefinedType(defn.PolyFunctionType, nme.apply, tpe)
   }
 }
