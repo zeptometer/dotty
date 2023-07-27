@@ -177,7 +177,7 @@ trait QuotesAndSplices {
    * Refer to: typedTypeApply
    */
   def typedAppliedSpliceWithTypes(tree: untpd.Apply, pt: Type)(using Context): Tree = {
-    assert(ctx.mode.is(Mode.QuotedPattern))
+    assert(ctx.mode.isQuotedPattern)
     val untpd.Apply(typeApplyTree @ untpd.TypeApply(splice: untpd.SplicePattern, typeargs), args) = tree: @unchecked
     def isInBraces: Boolean = splice.span.end != splice.body.span.end
     if isInBraces then // ${x}[...](...) match an application
