@@ -120,7 +120,6 @@ trait QuotesAndSplices {
         }
       }
       val typedTypeargs = tree.typeargs.map {
-        // TODO-18271: What is representation of type variables?
         case arg: untpd.Ident =>
           typedType(arg) // TODO-18271: Is this appropriate?
         case arg =>
@@ -132,10 +131,10 @@ trait QuotesAndSplices {
       val argTypes = typedArgs.map(_.tpe.widenTermRefExpr)
       // TODO-18271: Does PolyProto work here as expected?
       val patType = (tree.typeargs.isEmpty, tree.args.isEmpty) match
-        case (false, false) => pt
-        case (false, true)  => defn.FunctionOf(argTypes, pt)
-        case (true,  false) => ProtoTypes.PolyProto(typedTypeargs, pt)
-        case (true,  true)  => ProtoTypes.PolyProto(typedTypeargs, defn.FunctionOf(argTypes, pt))
+        case (true, true) => pt
+        case (true, false)  => defn.FunctionOf(argTypes, pt)
+        case (false,  true) => PolyFunctionOf(typedTypeargs.tpes, Nil, pt)
+        case (false,  false)  => PolyFunctionOf(typedTypeargs.tpes, argTypes, pt)
 
       val pat = typedPattern(tree.body, defn.QuotedExprClass.typeRef.appliedTo(patType))(using quotePatternSpliceContext)
       val baseType = pat.tpe.baseType(defn.QuotedExprClass)
