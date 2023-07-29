@@ -7,6 +7,6 @@ import scala.quoted.*
 
 def test(body: Expr[Any])(using Quotes): Expr[String] =
   body match
-    case '{ [A] => (x : A) => $b[A] : A => A } => // error // error
-      '{ $b[String]("str") } // error
+    case '{ [A <: Int, B] => (x : A, y : A) => $b[A](x, y) : A } => // error
+      '{ $b[String]("truthy", "falsy") }
     case _ => Expr("not matched")

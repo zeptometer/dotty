@@ -26,31 +26,51 @@ object QuotePatterns:
   import tpd._
 
   /** Check for restricted patterns */
-  def checkPattern(quotePattern: QuotePattern)(using Context): Unit = new tpd.TreeTraverser {
-    def traverse(tree: Tree)(using Context): Unit = tree match {
-      case _: SplicePattern =>
-      case tdef: TypeDef if tdef.symbol.isClass =>
-        val kind = if tdef.symbol.is(Module) then "objects" else "classes"
-        report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
-      case tree: NamedDefTree =>
-        if tree.name.is(NameKinds.WildcardParamName) then
-          report.warning(
-            "Use of `_` for lambda in quoted pattern. Use explicit lambda instead or use `$_` to match any term.",
-            tree.srcPos)
-        if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
-          report.error("Names cannot start with $ quote pattern", tree.namePos)
-        traverseChildren(tree)
-      case _: Match =>
-        report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
-      case _: Try =>
-        report.error("Implementation restriction: cannot match `try` expressions", tree.srcPos)
-      case _: Return =>
-        report.error("Implementation restriction: cannot match `return` statements", tree.srcPos)
-      case _ =>
-        traverseChildren(tree)
-    }
+  def checkPattern(quotePattern: QuotePattern)(using Context): Unit =
+    new tpd.TreeTraverser {
+      def traverse(tree: Tree)(using Context): Unit = tree match {
+        case _: SplicePattern =>
+        case tdef: TypeDef if tdef.symbol.isClass =>
+          val kind = if tdef.symbol.is(Module) then "objects" else "classes"
+          report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
+        case tree: NamedDefTree =>
+          if tree.name.is(NameKinds.WildcardParamName) then
+            report.warning(
+              "Use of `_` for lambda in quoted pattern. Use explicit lambda instead or use `$_` to match any term.",
+              tree.srcPos)
+          if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
+            report.error("Names cannot start with $ quote pattern", tree.namePos)
+          traverseChildren(tree)
+        case _: Match =>
+          report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
+        case _: Try =>
+          report.error("Implementation restriction: cannot match `try` expressions", tree.srcPos)
+        case _: Return =>
+          report.error("Implementation restriction: cannot match `return` statements", tree.srcPos)
+        case _ =>
+          traverseChildren(tree)
+      }
 
-  }.traverse(quotePattern.body)
+    }.traverse(quotePattern.body)
+
+    new tpd.TreeAccumulator[List[Symbol]] {
+      override def apply(typevars: List[Symbol], tree: tpd.Tree)(using Context): List[Symbol] = tree match {
+        case tree: SplicePattern =>
+          for (typearg <- tree.typeargs)
+          do
+            if !typevars.contains(typearg.symbol) then
+              report.error("Type parameters to a hoas pattern needs to be introduced in the quoted pattern", typearg.srcPos)
+          typevars
+        case tree @ DefDef(_, paramss, _, _) =>
+          val newTypevars = paramss flatMap { params => params match
+            case TypeDefs(tdefs) => tdefs map (_.symbol)
+            case _ => List.empty
+          }
+          foldOver(typevars ++: newTypevars, tree.rhs)
+          typevars
+        case _ => foldOver(typevars, tree)
+      }
+    }.apply(List.empty, quotePattern.body)
 
   /** Encode the quote pattern into an `unapply` that the pattern matcher can handle.
    *
