@@ -760,6 +760,7 @@ object Trees {
    *  `SplicePattern` can only be contained within a `QuotePattern`.
    *
    *  @param body  The tree that was spliced
+   *  @param typeargs The type arguments of the splice (the HOAS arguments)
    *  @param args  The arguments of the splice (the HOAS arguments)
    */
   case class SplicePattern[+T <: Untyped] private[ast] (body: Tree[T], typeargs: List[Tree[T]], args: List[Tree[T]])(implicit @constructorOnly src: SourceFile)
