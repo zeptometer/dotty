@@ -260,7 +260,7 @@ object QuotePatterns:
     fun match
       // <quotes>.asInstanceOf[QuoteMatching].{ExprMatch,TypeMatch}.unapply[<typeBindings>, <resTypes>]
       case TypeApply(Select(Select(TypeApply(Select(quotes, _), _), _), _), typeBindings :: resTypes :: Nil) =>
-        val bindings = unrollBindings(typeBindings)
+        val bindings = unrollHkNestedPairsTypeTree(typeBindings)
         val addPattenSplice = new TreeMap {
           private val patternIterator = patterns.iterator.filter {
             case pat: Bind => !pat.symbol.name.is(PatMatGivenVarName)
@@ -272,6 +272,10 @@ object QuotePatterns:
               cpy.SplicePattern(tree)(patternIterator.next(), Nil, Nil)
             case Apply(patternHole, SeqLiteral(args, _) :: Nil) if patternHole.symbol == defn.QuotedRuntimePatterns_higherOrderHole =>
               cpy.SplicePattern(tree)(patternIterator.next(), Nil, args)
+            case Apply(TypeApply(patternHole, List(_, targsTpe)), SeqLiteral(args, _) :: Nil) if patternHole.symbol == defn.QuotedRuntimePatterns_higherOrderHoleWithTypes =>
+              // TODO-18271: error on ill-formed typed arguments?
+              // TODO-18271: test case?
+              cpy.SplicePattern(tree)(patternIterator.next(), unrollHkNestedPairsTypeTree(targsTpe), args)
             case _ => super.transform(tree)
         }
         val body = addPattenSplice.transform(shape) match
@@ -289,7 +293,7 @@ object QuotePatterns:
           case body => body
         cpy.QuotePattern(tree)(bindings, body, quotes)
 
-  private def unrollBindings(tree: Tree)(using Context): List[Tree] = tree match
+  private def unrollHkNestedPairsTypeTree(tree: Tree)(using Context): List[Tree] = tree match
     case AppliedTypeTree(tupleN, bindings) if defn.isTupleClass(tupleN.symbol) => bindings // TupleN, 1 <= N <= 22
-    case AppliedTypeTree(_, head :: tail :: Nil) => head :: unrollBindings(tail) // KCons or *:
+    case AppliedTypeTree(_, head :: tail :: Nil) => head :: unrollHkNestedPairsTypeTree(tail) // KCons or *:
     case _ => Nil // KNil or EmptyTuple
