@@ -120,8 +120,15 @@ trait QuotesAndSplices {
         }
       }
       val typedTypeargs = tree.typeargs.map {
-        case arg: untpd.Ident =>
-          typedType(arg) // TODO-18271: Is this appropriate?
+        case typearg: untpd.Ident =>
+          val typedTypearg = typedType(typearg) // TODO-18271: Is this appropriate?
+          /* TODO-18271: Allow type bounds?
+           * (NOTE: Needs non-trivial extension to type system)
+           */
+          val bounds = ctx.gadt.fullBounds(typedTypearg.symbol)
+          if bounds != null && bounds != TypeBounds.empty then
+            report.error("Type arguments to Open pattern are expected to have no bounds", typearg.srcPos)
+          typedTypearg
         case arg =>
           report.error("Open pattern expected an identifier", arg.srcPos)
           EmptyTree
@@ -129,12 +136,12 @@ trait QuotesAndSplices {
       for arg <- typedArgs if arg.symbol.is(Mutable) do // TODO support these patterns. Possibly using scala.quoted.util.Var
         report.error("References to `var`s cannot be used in higher-order pattern", arg.srcPos)
       val argTypes = typedArgs.map(_.tpe.widenTermRefExpr)
-      // TODO-18271: Does PolyProto work here as expected?
       val patType = (tree.typeargs.isEmpty, tree.args.isEmpty) match
         case (true, true) => pt
-        case (true, false)  => defn.FunctionOf(argTypes, pt)
-        case (false,  true) => PolyFunctionOf(typedTypeargs.tpes, Nil, pt)
-        case (false,  false)  => PolyFunctionOf(typedTypeargs.tpes, argTypes, pt)
+        case (true, false)  =>
+          defn.FunctionOf(argTypes, pt)
+        case (false,  _) =>
+          PolyFunctionOf(typedTypeargs.tpes, argTypes, pt)
 
       val pat = typedPattern(tree.body, defn.QuotedExprClass.typeRef.appliedTo(patType))(using quotePatternSpliceContext)
       val baseType = pat.tpe.baseType(defn.QuotedExprClass)
@@ -385,17 +392,13 @@ object QuotesAndSplices {
       */
     def apply(typeargs: List[Type], args: List[Type], resultType: Type)(using Context): Type =
       val typeargs1 = PolyType.syntheticParamNames(typeargs.length)
-      val bounds = typeargs map { tpe =>
-        ctx.gadt.fullBounds(tpe.typeSymbol) match
-          case b:TypeBounds => b
-          case _ => TypeBounds.empty
-        }
-      println(s"bounds = ${bounds map (_.show)}")
+
+      val bounds = typeargs map (_ => TypeBounds.empty)
       val resultTypeExp = (pt: PolyType) => {
         val fromSymbols = typeargs map (_.typeSymbol)
         val args1 = args map (_.subst(fromSymbols, pt.paramRefs))
         val resultType1 = resultType.subst(fromSymbols, pt.paramRefs)
-        MethodType(args1, resultType)
+        MethodType(args1, resultType1)
       }
       val tpe = PolyType(typeargs1)(_ => bounds, resultTypeExp)
       RefinedType(defn.PolyFunctionType, nme.apply, tpe)
