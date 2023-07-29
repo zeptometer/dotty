@@ -121,7 +121,7 @@ trait QuotesAndSplices {
       }
       val typedTypeargs = tree.typeargs.map {
         case typearg: untpd.Ident =>
-          val typedTypearg = typedType(typearg) // TODO-18271: Is this appropriate?
+          val typedTypearg = typedType(typearg)
           /* TODO-18271: Allow type bounds?
            * (NOTE: Needs non-trivial extension to type system)
            */

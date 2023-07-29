@@ -266,7 +266,6 @@ object QuotePatterns:
             case pat: Bind => !pat.symbol.name.is(PatMatGivenVarName)
             case _ => true
           }
-          // TODO-18271: Support for typeargs?
           override def transform(tree: tpd.Tree)(using Context): tpd.Tree = tree match
             case TypeApply(patternHole, _) if patternHole.symbol == defn.QuotedRuntimePatterns_patternHole =>
               cpy.SplicePattern(tree)(patternIterator.next(), Nil, Nil)
