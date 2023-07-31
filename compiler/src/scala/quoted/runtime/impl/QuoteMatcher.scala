@@ -427,13 +427,25 @@ class QuoteMatcher(debug: Boolean) {
                           notMatched
                       case _ => matched
 
+                  def matchTypeParams(ptparams: List[TypeDef], scparams: List[TypeDef]): optional[MatchingExprs] =
+                    // TODO-18271: Compare type bounds
+                    val ptsyms = ptparams.map(_.symbol)
+                    val scsyms = scparams.map(_.symbol)
+                    ctx.gadtState.unifySyms(ptsyms, scsyms)
+                    matched
+
                   def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
                     (scparamss, ptparamss) match {
                       case (scparams :: screst, ptparams :: ptrest) =>
-                        val mr1 = matchLists(scparams, ptparams)(_ =?= _)
-                        val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
-                        val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
-                        (resEnv, mr1 &&& mrrest)
+                        (scparams, ptparams) match
+                          case (TypeDefs(scparams), TypeDefs(ptparams)) =>
+                            (summon[Env], matchTypeParams(scparams, ptparams))
+                          case (ValDefs(scparams), ValDefs(ptparams)) =>
+                            val mr1 = matchLists(scparams, ptparams)(_ =?= _)
+                            val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
+                            val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
+                            (resEnv, mr1 &&& mrrest)
+                          case _ => notMatched
                       case (Nil, Nil) => (summon[Env], matched)
                       case _ => notMatched
                     }

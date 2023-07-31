@@ -268,6 +268,16 @@ sealed trait GadtState {
     finally if !result then restore(saved)
     result
 
+  def unifySyms(params1: List[Symbol], params2: List[Symbol])(using Context) =
+    addToConstraint(params1)
+    addToConstraint(params2)
+    val paramrefs1 = params1 map (gadt.tvarOrError(_))
+    val paramrefs2 = params2 map (gadt.tvarOrError(_))
+    for ((p1, p2) <- paramrefs1.zip(paramrefs2))
+    do
+      addLess(p1.origin, p2.origin)
+      addLess(p2.origin, p1.origin)
+
   // ---- Protected/internal -----------------------------------------------
 
   override protected def constraint = gadt.constraint
