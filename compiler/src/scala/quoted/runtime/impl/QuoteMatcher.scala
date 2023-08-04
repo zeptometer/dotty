@@ -321,9 +321,10 @@ class QuoteMatcher(debug: Boolean) {
           val capturedIds = args.map(getCapturedIdent)
           val capturedSymbols = capturedIds.map(_.symbol)
           val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v))
+          val unrolledTargs = unrollHkNestedPairsTypeTree(targs)
           withEnv(captureEnv) {
             scrutinee match
-              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), targs, env)
+              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), unrolledTargs.map(_.tpe), env)
               case _ => notMatched
           }
 
@@ -463,9 +464,10 @@ class QuoteMatcher(debug: Boolean) {
                       case _ => matched
 
                   def matchTypeParams(ptparams: List[TypeDef], scparams: List[TypeDef]): optional[MatchingExprs] =
-                    // TODO-18271: Compare type bounds
+                    // TODO-18271: Type bounds should be empty
                     val ptsyms = ptparams.map(_.symbol)
                     val scsyms = scparams.map(_.symbol)
+
                     ctx.gadtState.unifySyms(ptsyms, scsyms)
                     matched
 
@@ -474,7 +476,8 @@ class QuoteMatcher(debug: Boolean) {
                       case (scparams :: screst, ptparams :: ptrest) =>
                         (scparams, ptparams) match
                           case (TypeDefs(scparams), TypeDefs(ptparams)) =>
-                            (summon[Env], matchTypeParams(scparams, ptparams))
+                            matchTypeParams(scparams, ptparams)
+                            matchParamss(screst, ptrest)
                           case (ValDefs(scparams), ValDefs(ptparams)) =>
                             val mr1 = matchLists(scparams, ptparams)(_ =?= _)
                             val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
@@ -639,9 +642,9 @@ class QuoteMatcher(debug: Boolean) {
 
           val typeArgs1 = PolyType.syntheticParamNames(typeArgs.length)
           val bounds = typeArgs map (_ => TypeBounds.empty)
+          val fromSymbols = typeArgs.map(_.typeSymbol)
           val resultTypeExp = (pt: PolyType) => {
-            val fromSymbols = typeArgs.map(_.typeSymbol)
-            val argTypes1 = argTypes.map(_.subst(fromSymbols, pt.paramRefs))
+            val argTypes1 = paramTypes.map(_.subst(fromSymbols, pt.paramRefs))
             val resultType1 = mapTypeHoles(patternTpe).subst(fromSymbols, pt.paramRefs)
             MethodType(argTypes1, resultType1)
           }
@@ -649,7 +652,8 @@ class QuoteMatcher(debug: Boolean) {
           val meth = newAnonFun(ctx.owner, methTpe)
           // TODO-18271
           def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
-            val argsMap = argIds.view.map(_.symbol).zip(lambdaArgss.head).toMap
+            val typeArgs = lambdaArgss.head
+            val argsMap = argIds.view.map(_.symbol).zip(lambdaArgss.tail.head).toMap
             val body = new TreeMap {
               override def transform(tree: Tree)(using Context): Tree =
                 tree match
@@ -661,7 +665,9 @@ class QuoteMatcher(debug: Boolean) {
                   case Apply(fun, args) if env.contains(tree.symbol) => transform(fun).select(nme.apply).appliedToArgs(args.map(transform))
                   case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                   case tree => super.transform(tree)
-            }.transform(tree)
+            }
+            .transform(tree)
+            .subst(fromSymbols, typeArgs.map(_.symbol))
             TreeOps(body).changeNonLocalOwners(meth)
           }
           val hoasClosure = Closure(meth, bodyFn)
@@ -679,9 +685,24 @@ class QuoteMatcher(debug: Boolean) {
   private def matchedOpen(tree: Tree, patternTpe: Type, argIds: List[Tree], argTypes: List[Type], typeArgs: List[Type], env: Env)(using Context): MatchingExprs =
     Seq(MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, typeArgs, env))
 
+  // private def unifySyms(params1: List[Symbol], params2: List[Symbol])(using Context) =
+  //   ctx.gadtState.addToConstraint(params1)
+  //   ctx.gadtState.addToConstraint(params2)
+  //   val paramrefs1 = params1 map (ctx.gadt.tvarOrError(_))
+  //   val paramrefs2 = params2 map (ctx.gadt.tvarOrError(_))
+  //   for ((p1, p2) <- paramrefs1.zip(paramrefs2))
+  //   do
+  //     p1 <:< p2
+  //     p2 <:< p1
+
   extension (self: MatchingExprs)
       /** Concatenates the contents of two successful matchings */
       def &&& (that: MatchingExprs): MatchingExprs = self ++ that
   end extension
 
+  // TODO-18271: Duplicate with QuotePatterns.unrollHkNestedPairsTypeTree
+  private def unrollHkNestedPairsTypeTree(tree: Tree)(using Context): List[Tree] = tree match
+    case AppliedTypeTree(tupleN, bindings) if defn.isTupleClass(tupleN.symbol) => bindings // TupleN, 1 <= N <= 22
+    case AppliedTypeTree(_, head :: tail :: Nil) => head :: unrollHkNestedPairsTypeTree(tail) // KCons or *:
+    case _ => Nil // KNil or EmptyTuple
 }
