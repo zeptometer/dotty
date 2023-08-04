@@ -171,7 +171,6 @@ trait QuotesAndSplices {
       val splice1 = typedSplicePattern(splice, defn.FunctionOf(argTypes, pt))
       untpd.cpy.Apply(tree)(splice1.select(nme.apply), typedArgs).withType(pt)
     else // $x(...) higher-order quasipattern
-      // TODO-18271: Case for highr-order quasi-quote pattern with type params
       if args.isEmpty then
          report.error("Missing arguments for open pattern", tree.srcPos)
       typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, Nil, args), pt)
@@ -400,7 +399,6 @@ object QuotesAndSplices {
         val resultType1 = resultType.subst(fromSymbols, pt.paramRefs)
         MethodType(args1, resultType1)
       }
-      val tpe = PolyType(typeargs1)(_ => bounds, resultTypeExp)
-      RefinedType(defn.PolyFunctionType, nme.apply, tpe)
+      defn.PolyFunctionOf(PolyType(typeargs1)(_ => bounds, resultTypeExp))
   }
 }

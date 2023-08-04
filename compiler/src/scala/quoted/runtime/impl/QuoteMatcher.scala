@@ -244,14 +244,14 @@ class QuoteMatcher(debug: Boolean) {
             if patternHole.symbol.eq(defn.QuotedRuntimePatterns_patternHole) &&
                tpt2.tpe.derivesFrom(defn.RepeatedParamClass) =>
           scrutinee match
-            case Typed(s, tpt1) if s.tpe <:< tpt.tpe => matched(scrutinee)
+            case Typed(s, tpt1) if isSubTypeUnderEnv(s, tpt) => matched(scrutinee)
             case _ => notMatched
 
         /* Term hole */
         // Match a scala.internal.Quoted.patternHole and return the scrutinee tree
         case TypeApply(patternHole, tpt :: Nil)
             if patternHole.symbol.eq(defn.QuotedRuntimePatterns_patternHole) &&
-                scrutinee.tpe <:< tpt.tpe =>
+                isSubTypeUnderEnv(scrutinee, tpt) =>
           scrutinee match
             case ClosedPatternTerm(scrutinee) => matched(scrutinee)
             case _ => notMatched
@@ -360,7 +360,7 @@ class QuoteMatcher(debug: Boolean) {
                 /* Match reference */
                 case _: Ident if symbolMatch(scrutinee, pattern) => matched
                 /* Match type */
-                case TypeTreeTypeTest(pattern) if scrutinee.tpe <:< pattern.tpe => matched
+                case TypeTreeTypeTest(pattern) if isSubTypeUnderEnv(scrutinee, pattern) => matched
                 case _ => notMatched
 
             /* Match application */
@@ -439,7 +439,7 @@ class QuoteMatcher(debug: Boolean) {
             // TODO remove this?
             case TypeTreeTypeTest(scrutinee) =>
               pattern match
-                case TypeTreeTypeTest(pattern) if scrutinee.tpe <:< pattern.tpe => matched
+                case TypeTreeTypeTest(pattern) if isSubTypeUnderEnv(scrutinee, pattern) => matched
                 case _ => notMatched
 
             /* Match val */
@@ -476,8 +476,13 @@ class QuoteMatcher(debug: Boolean) {
                       case (scparams :: screst, ptparams :: ptrest) =>
                         (scparams, ptparams) match
                           case (TypeDefs(scparams), TypeDefs(ptparams)) =>
-                            matchTypeParams(scparams, ptparams)
-                            matchParamss(screst, ptrest)
+                            scparams.foreach(tdef => println(s"tdef.rhs = ${tdef.rhs.show}"))
+                            if scparams.exists(tdef => tdef.rhs.isEmpty) then
+                              notMatched
+
+                            val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
+                            val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
+                            (resEnv, mrrest)
                           case (ValDefs(scparams), ValDefs(ptparams)) =>
                             val mr1 = matchLists(scparams, ptparams)(_ =?= _)
                             val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
@@ -569,6 +574,10 @@ class QuoteMatcher(debug: Boolean) {
     || summon[Env].get(devirtualizedScrutinee).contains(pattern)
     || devirtualizedScrutinee.allOverriddenSymbols.contains(pattern)
 
+  private def isSubTypeUnderEnv(scrutinee: Tree, pattern: Tree)(using Env, Context): Boolean =
+    val env = summon[Env]
+    scrutinee.subst(env.keys.toList, env.values.toList).tpe <:< pattern.tpe
+
   private object ClosedPatternTerm {
     /** Matches a term that does not contain free variables defined in the pattern (i.e. not defined in `Env`) */
     def unapply(term: Tree)(using Env, Context): Option[term.type] =
@@ -576,13 +585,21 @@ class QuoteMatcher(debug: Boolean) {
 
     /** Return all free variables of the term defined in the pattern (i.e. defined in `Env`) */
     def freePatternVars(term: Tree)(using Env, Context): Set[Symbol] =
-      val accumulator = new TreeAccumulator[Set[Symbol]] {
-        def apply(x: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
-          tree match
-            case tree: Ident if summon[Env].contains(tree.symbol) => foldOver(x + tree.symbol, tree)
-            case _ => foldOver(x, tree)
+      val typeAccumulator = new TypeAccumulator[Set[Symbol]] {
+        def apply(x: Set[Symbol], tp: Type): Set[Symbol] =
+          if summon[Env].contains(tp.typeSymbol) then
+            foldOver(x + tp.typeSymbol, tp)
+          else
+            foldOver(x, tp)
       }
-      accumulator.apply(Set.empty, term)
+      val treeAccumulator = new TreeAccumulator[Set[Symbol]] {
+        def apply(x: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
+          val tvars = typeAccumulator(Set.empty, tree.tpe)
+          tree match
+            case tree: Ident if summon[Env].contains(tree.symbol) => foldOver(x ++ tvars + tree.symbol, tree)
+            case _ => foldOver(x ++ tvars, tree)
+      }
+      treeAccumulator(Set.empty, term)
   }
 
   enum MatchResult:
@@ -684,16 +701,6 @@ class QuoteMatcher(debug: Boolean) {
 
   private def matchedOpen(tree: Tree, patternTpe: Type, argIds: List[Tree], argTypes: List[Type], typeArgs: List[Type], env: Env)(using Context): MatchingExprs =
     Seq(MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, typeArgs, env))
-
-  // private def unifySyms(params1: List[Symbol], params2: List[Symbol])(using Context) =
-  //   ctx.gadtState.addToConstraint(params1)
-  //   ctx.gadtState.addToConstraint(params2)
-  //   val paramrefs1 = params1 map (ctx.gadt.tvarOrError(_))
-  //   val paramrefs2 = params2 map (ctx.gadt.tvarOrError(_))
-  //   for ((p1, p2) <- paramrefs1.zip(paramrefs2))
-  //   do
-  //     p1 <:< p2
-  //     p2 <:< p1
 
   extension (self: MatchingExprs)
       /** Concatenates the contents of two successful matchings */
