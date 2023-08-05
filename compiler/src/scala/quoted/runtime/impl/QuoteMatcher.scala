@@ -446,14 +446,12 @@ class QuoteMatcher(debug: Boolean) {
             // only when they are empty bounds (<: Nothing :> Any)
             // to keep behavioral difference minimal
             case TypeBoundsTree(sclo, schi, scalias) =>
-              println("trace: 19.1")
               pattern match
                 case TypeBoundsTree(ptlo, pthi, ptalias) =>
                   sclo =?= ptlo &&& schi =?= pthi &&& scalias =?= ptalias
                 case _ => notMatched
 
             case TypeDef(_, rhs1) =>
-              println("trace: 19.2")
               pattern match
                 case TypeDef(_, rhs2) => rhs1 =?= rhs2
                 case _ => notMatched
