@@ -52,7 +52,7 @@ object QuotePatterns:
       }
 
     }.traverse(quotePattern.body)
-
+    // TODO-18271: Refactor this
     new tpd.TreeAccumulator[List[Symbol]] {
       override def apply(typevars: List[Symbol], tree: tpd.Tree)(using Context): List[Symbol] = tree match {
         case tree: SplicePattern =>

@@ -442,6 +442,22 @@ class QuoteMatcher(debug: Boolean) {
                 case TypeTreeTypeTest(pattern) if isSubTypeUnderEnv(scrutinee, pattern) => matched
                 case _ => notMatched
 
+            // TODO-18271: We might want to restrict type bounds/type defs to match
+            // only when they are empty bounds (<: Nothing :> Any)
+            // to keep behavioral difference minimal
+            case TypeBoundsTree(sclo, schi, scalias) =>
+              println("trace: 19.1")
+              pattern match
+                case TypeBoundsTree(ptlo, pthi, ptalias) =>
+                  sclo =?= ptlo &&& schi =?= pthi &&& scalias =?= ptalias
+                case _ => notMatched
+
+            case TypeDef(_, rhs1) =>
+              println("trace: 19.2")
+              pattern match
+                case TypeDef(_, rhs2) => rhs1 =?= rhs2
+                case _ => notMatched
+
             /* Match val */
             case scrutinee @ ValDef(_, tpt1, _) =>
               pattern match
@@ -463,32 +479,13 @@ class QuoteMatcher(debug: Boolean) {
                           notMatched
                       case _ => matched
 
-                  def matchTypeParams(ptparams: List[TypeDef], scparams: List[TypeDef]): optional[MatchingExprs] =
-                    // TODO-18271: Type bounds should be empty
-                    val ptsyms = ptparams.map(_.symbol)
-                    val scsyms = scparams.map(_.symbol)
-
-                    ctx.gadtState.unifySyms(ptsyms, scsyms)
-                    matched
-
                   def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
                     (scparamss, ptparamss) match {
                       case (scparams :: screst, ptparams :: ptrest) =>
-                        (scparams, ptparams) match
-                          case (TypeDefs(scparams), TypeDefs(ptparams)) =>
-                            scparams.foreach(tdef => println(s"tdef.rhs = ${tdef.rhs.show}"))
-                            if scparams.exists(tdef => tdef.rhs.isEmpty) then
-                              notMatched
-
-                            val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
-                            val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
-                            (resEnv, mrrest)
-                          case (ValDefs(scparams), ValDefs(ptparams)) =>
-                            val mr1 = matchLists(scparams, ptparams)(_ =?= _)
-                            val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
-                            val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
-                            (resEnv, mr1 &&& mrrest)
-                          case _ => notMatched
+                        val mr1 = matchLists(scparams, ptparams)(_ =?= _)
+                        val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
+                        val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
+                        (resEnv, mr1 &&& mrrest)
                       case (Nil, Nil) => (summon[Env], matched)
                       case _ => notMatched
                     }
