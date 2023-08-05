@@ -320,11 +320,11 @@ class QuoteMatcher(debug: Boolean) {
           val env = summon[Env]
           val capturedIds = args.map(getCapturedIdent)
           val capturedSymbols = capturedIds.map(_.symbol)
-          val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v))
-          val unrolledTargs = unrollHkNestedPairsTypeTree(targs)
+          val capturedTargs = unrollHkNestedPairsTypeTree(targs)
+          val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v) && !capturedTargs.map(_.symbol).contains(v))
           withEnv(captureEnv) {
             scrutinee match
-              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), unrolledTargs.map(_.tpe), env)
+              case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), capturedTargs.map(_.tpe), env)
               case _ => notMatched
           }
 
