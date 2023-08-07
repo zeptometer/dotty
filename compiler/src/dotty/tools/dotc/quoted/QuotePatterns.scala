@@ -27,12 +27,19 @@ object QuotePatterns:
 
   /** Check for restricted patterns */
   def checkPattern(quotePattern: QuotePattern)(using Context): Unit =
-    new tpd.TreeTraverser {
-      def traverse(tree: Tree)(using Context): Unit = tree match {
-        case _: SplicePattern =>
+    val typevars = new tpd.TreeAccumulator[Set[Symbol]] {
+      override def apply(typevars: Set[Symbol], tree: tpd.Tree)(using Context): Set[Symbol] = tree match {
+        case _: SplicePattern => typevars
+        case tree @ DefDef(_, paramss, _, _) =>
+          val newTypevars = paramss.flatMap{ params => params match
+            case TypeDefs(tdefs) => tdefs.map(_.symbol)
+            case _ => List.empty
+          }.toSet
+          foldOver(typevars union newTypevars, tree.rhs)
         case tdef: TypeDef if tdef.symbol.isClass =>
           val kind = if tdef.symbol.is(Module) then "objects" else "classes"
           report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
+          typevars
         case tree: NamedDefTree =>
           if tree.name.is(NameKinds.WildcardParamName) then
             report.warning(
@@ -40,37 +47,50 @@ object QuotePatterns:
               tree.srcPos)
           if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
             report.error("Names cannot start with $ quote pattern", tree.namePos)
-          traverseChildren(tree)
+          foldOver(typevars, tree)
         case _: Match =>
           report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
+          typevars
         case _: Try =>
           report.error("Implementation restriction: cannot match `try` expressions", tree.srcPos)
+          typevars
         case _: Return =>
           report.error("Implementation restriction: cannot match `return` statements", tree.srcPos)
-        case _ =>
-          traverseChildren(tree)
-      }
-
-    }.traverse(quotePattern.body)
-    // TODO-18271: Refactor this
-    new tpd.TreeAccumulator[List[Symbol]] {
-      override def apply(typevars: List[Symbol], tree: tpd.Tree)(using Context): List[Symbol] = tree match {
-        case tree: SplicePattern =>
-          for (typearg <- tree.typeargs)
-          do
-            if !typevars.contains(typearg.symbol) then
-              report.error("Type parameters to a hoas pattern needs to be introduced in the quoted pattern", typearg.srcPos)
-          typevars
-        case tree @ DefDef(_, paramss, _, _) =>
-          val newTypevars = paramss flatMap { params => params match
-            case TypeDefs(tdefs) => tdefs map (_.symbol)
-            case _ => List.empty
-          }
-          foldOver(typevars ++: newTypevars, tree.rhs)
           typevars
         case _ => foldOver(typevars, tree)
       }
-    }.apply(List.empty, quotePattern.body)
+    }.apply(Set.empty, quotePattern.body)
+
+    // TODO-18271: Refactor this
+    new tpd.TreeTraverser {
+      override def traverse(tree: tpd.Tree)(using Context): Unit = tree match {
+        case tree: SplicePattern =>
+          def uncapturedTypeVars(arg: tpd.Tree, capturedTypeVars: List[tpd.Tree]) =
+            val capturedTypeVarsSet = capturedTypeVars.map(_.symbol).toSet
+            println("--- uncapturedTypeVars")
+            println(s"typevars = ${typevars.map(_.show)}")
+            println(s"capturedTypevars = ${capturedTypeVarsSet.map(_.show)}")
+            new TypeAccumulator[Set[Type]] {
+              def apply(x: Set[Type], tp: Type): Set[Type] =
+                if typevars.contains(tp.typeSymbol) && !capturedTypeVarsSet.contains(tp.typeSymbol) then
+                  foldOver(x + tp, tp)
+                else
+                  foldOver(x, tp)
+            }.apply(Set.empty, arg.tpe)
+
+          // Type arguments to a splice patterns must be type variables that are introduced
+          // inside the quote pattern
+          for (typearg <- tree.typeargs)
+          do
+            if !typevars.contains(typearg.symbol) then
+              report.error("Type arguments of a hoas pattern needs to be introduced in the quoted pattern", typearg.srcPos)
+          for (arg <- tree.args)
+          do
+            if !uncapturedTypeVars(arg, tree.typeargs).isEmpty then
+              report.error("Type variables that this argument depends on are not captured in this hoas pattern", arg.srcPos)
+        case _ => traverseChildren(tree)
+      }
+    }.traverse(quotePattern.body)
 
   /** Encode the quote pattern into an `unapply` that the pattern matcher can handle.
    *
@@ -272,8 +292,6 @@ object QuotePatterns:
             case Apply(patternHole, SeqLiteral(args, _) :: Nil) if patternHole.symbol == defn.QuotedRuntimePatterns_higherOrderHole =>
               cpy.SplicePattern(tree)(patternIterator.next(), Nil, args)
             case Apply(TypeApply(patternHole, List(_, targsTpe)), SeqLiteral(args, _) :: Nil) if patternHole.symbol == defn.QuotedRuntimePatterns_higherOrderHoleWithTypes =>
-              // TODO-18271: error on ill-formed typed arguments?
-              // TODO-18271: test case?
               cpy.SplicePattern(tree)(patternIterator.next(), unrollHkNestedPairsTypeTree(targsTpe), args)
             case _ => super.transform(tree)
         }

@@ -649,6 +649,8 @@ class QuoteMatcher(debug: Boolean) {
           val hoasClosure = Closure(meth, bodyFn)
           new ExprImpl(hoasClosure, spliceScope)
         else
+          // TODO-18271: This implementation fails Typer.assertPositioned.
+          // We want to find safe way to generate poly function
           val names: List[TermName] = argIds.map(_.symbol.name.asTermName)
           val paramTypes = argTypes.map(tpe => mapTypeHoles(tpe.widenTermRefExpr))
 
@@ -662,7 +664,6 @@ class QuoteMatcher(debug: Boolean) {
           }
           val methTpe = PolyType(typeArgs1)(_ => bounds, resultTypeExp)
           val meth = newAnonFun(ctx.owner, methTpe)
-          // TODO-18271
           def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
             val typeArgs = lambdaArgss.head
             val argsMap = argIds.view.map(_.symbol).zip(lambdaArgss.tail.head).toMap
