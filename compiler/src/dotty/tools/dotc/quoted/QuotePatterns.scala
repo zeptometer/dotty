@@ -61,15 +61,23 @@ object QuotePatterns:
       }
     }.apply(Set.empty, quotePattern.body)
 
-    // TODO-18271: Refactor this
+    /*
+     * This part checks well-formedness of arguments to hoas patterns.
+     * (1) Type arguments of a hoas patterns must be introduced in the quote pattern.ctxShow
+     *     Examples
+     *       well-formed: '{ [A] => (x : A) => $a[A](x) } // A is introduced in the quote pattern
+     *       ill-formed:  '{ (x : Int) => $a[Int](x) }    // Int is defined outside of the quote pattern
+     * (2) If value arguments of a hoas pattern has a type with type variables that are introduced in
+     *     the quote pattern, those type variables should be in type arguments to the hoas patternHole
+     *     Examples
+     *       well-formed: '{ [A] => (x : A) => $a[A](x) } // a : [A] => (x:A) => A
+     *       ill-formed:  '{ [A] => (x : A) => $a(x) }    // a : (x:A) => A ...but A is undefined; hence ill-formed
+     */
     new tpd.TreeTraverser {
       override def traverse(tree: tpd.Tree)(using Context): Unit = tree match {
         case tree: SplicePattern =>
           def uncapturedTypeVars(arg: tpd.Tree, capturedTypeVars: List[tpd.Tree]) =
             val capturedTypeVarsSet = capturedTypeVars.map(_.symbol).toSet
-            println("--- uncapturedTypeVars")
-            println(s"typevars = ${typevars.map(_.show)}")
-            println(s"capturedTypevars = ${capturedTypeVarsSet.map(_.show)}")
             new TypeAccumulator[Set[Type]] {
               def apply(x: Set[Type], tp: Type): Set[Type] =
                 if typevars.contains(tp.typeSymbol) && !capturedTypeVarsSet.contains(tp.typeSymbol) then
@@ -78,13 +86,11 @@ object QuotePatterns:
                   foldOver(x, tp)
             }.apply(Set.empty, arg.tpe)
 
-          // Type arguments to a splice patterns must be type variables that are introduced
-          // inside the quote pattern
-          for (typearg <- tree.typeargs)
+          for (typearg <- tree.typeargs) // case (1)
           do
             if !typevars.contains(typearg.symbol) then
               report.error("Type arguments of a hoas pattern needs to be introduced in the quoted pattern", typearg.srcPos)
-          for (arg <- tree.args)
+          for (arg <- tree.args) // case (2)
           do
             if !uncapturedTypeVars(arg, tree.typeargs).isEmpty then
               report.error("Type variables that this argument depends on are not captured in this hoas pattern", arg.srcPos)
