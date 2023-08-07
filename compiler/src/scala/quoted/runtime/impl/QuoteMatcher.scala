@@ -644,8 +644,13 @@ class QuoteMatcher(debug: Boolean) {
         val meth = newAnonFun(ctx.owner, methTpe)
 
         def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
-          val typeArgsMap = ptTypeVarSymbols.zip(lambdaArgss.head.map(_.tpe)).toMap
-          val argsMap = argIds.view.map(_.symbol).zip(lambdaArgss.tail.head).toMap
+          val (typeParams, params) = if typeArgs.isEmpty then
+              (List.empty, lambdaArgss.head)
+            else
+              (lambdaArgss.head.map(_.tpe), lambdaArgss.tail.head)
+
+          val typeArgsMap = ptTypeVarSymbols.zip(typeParams).toMap
+          val argsMap = argIds.view.map(_.symbol).zip(params).toMap
 
           val body = new TreeTypeMap(
             typeMap = if typeArgs.isEmpty then IdentityTypeMap
