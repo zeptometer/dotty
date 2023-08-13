@@ -35,7 +35,7 @@ object QuotePatterns:
             case TypeDefs(tdefs) => tdefs.map(_.symbol)
             case _ => List.empty
           }.toSet
-          foldOver(typevars union newTypevars, tree.rhs)
+          foldOver(typevars union newTypevars, tree)
         case tdef: TypeDef if tdef.symbol.isClass =>
           val kind = if tdef.symbol.is(Module) then "objects" else "classes"
           report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
