@@ -89,7 +89,7 @@ object QuotePatterns:
           for (typearg <- tree.typeargs) // case (1)
           do
             if !typevars.contains(typearg.symbol) then
-              report.error("Type arguments of a hoas pattern needs to be introduced in the quoted pattern", typearg.srcPos)
+              report.error("Type arguments of a hoas pattern needs to be defined inside the quoted pattern", typearg.srcPos)
           for (arg <- tree.args) // case (2)
           do
             if !uncapturedTypeVars(arg, tree.typeargs).isEmpty then
