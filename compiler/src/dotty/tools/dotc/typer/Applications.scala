@@ -1148,6 +1148,11 @@ trait Applications extends Compatibility {
     if (ctx.mode.is(Mode.Pattern))
       return errorTree(tree, em"invalid pattern")
 
+    tree.fun match {
+      case _: untpd.SplicePattern => return errorTree(tree, em"A higher-order pattern must carry value arguments")
+      case _ =>
+    }
+
     val isNamed = hasNamedArg(tree.args)
     val typedArgs = if (isNamed) typedNamedArgs(tree.args) else tree.args.mapconserve(typedType(_))
     record("typedTypeApply")
