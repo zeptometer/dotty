@@ -30,12 +30,6 @@ object QuotePatterns:
     val typevars = new tpd.TreeAccumulator[Set[Symbol]] {
       override def apply(typevars: Set[Symbol], tree: tpd.Tree)(using Context): Set[Symbol] = tree match {
         case _: SplicePattern => typevars
-        case tree @ DefDef(_, paramss, _, _) =>
-          val newTypevars = paramss.flatMap{ params => params match
-            case TypeDefs(tdefs) => tdefs.map(_.symbol)
-            case _ => List.empty
-          }.toSet
-          foldOver(typevars union newTypevars, tree)
         case tdef: TypeDef if tdef.symbol.isClass =>
           val kind = if tdef.symbol.is(Module) then "objects" else "classes"
           report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
@@ -47,7 +41,14 @@ object QuotePatterns:
               tree.srcPos)
           if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
             report.error("Names cannot start with $ quote pattern", tree.namePos)
-          foldOver(typevars, tree)
+          val typevars1 = tree match
+            case tree @ DefDef(_, paramss, _, _) =>
+              typevars union paramss.flatMap{ params => params match
+                case TypeDefs(tdefs) => tdefs.map(_.symbol)
+                case _ => List.empty
+              }.toSet
+            case _ => typevars
+          foldOver(typevars1, tree)
         case _: Match =>
           report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
           typevars
