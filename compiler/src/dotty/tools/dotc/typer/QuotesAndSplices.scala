@@ -127,7 +127,7 @@ trait QuotesAndSplices {
            */
           val bounds = ctx.gadt.fullBounds(typedTypearg.symbol)
           if bounds != null && bounds != TypeBounds.empty then
-            report.error("Type arguments to Open pattern are expected to have no bounds", typearg.srcPos)
+            report.error("Implementation restriction: Type arguments to Open pattern are expected to have no bounds", typearg.srcPos)
           typedTypearg
         case arg =>
           report.error("Open pattern expected an identifier", arg.srcPos)

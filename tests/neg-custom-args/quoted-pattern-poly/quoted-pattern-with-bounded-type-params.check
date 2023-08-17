@@ -1,0 +1,4 @@
+-- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-bounded-type-params.scala:10:50 ----------------
+10 |    case '{ [A <: Int, B] => (x : A, y : A) => $b[A](x, y) : A } => // error
+   |                                                  ^
+   |                       Implementation restriction: Type arguments to Open pattern are expected to have no bounds
