@@ -32,7 +32,7 @@ object Patterns {
    *  Calling this method in source has undefined behavior at compile-time
    */
   @experimental
-  @compileTimeOnly("Illegal reference to `scala.quoted.runtime.Patterns.higherOrderHole`")
+  @compileTimeOnly("Illegal reference to `scala.quoted.runtime.Patterns.higherOrderHoleWithTypes`")
   def higherOrderHoleWithTypes[U, T](args: Any*): U = ???
 
   /** A splice of a name in a quoted pattern is that marks the definition of a type splice.
