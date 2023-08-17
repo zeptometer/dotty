@@ -76,7 +76,13 @@ object QuotePatterns:
     new tpd.TreeTraverser {
       override def traverse(tree: tpd.Tree)(using Context): Unit = tree match {
         case tree: SplicePattern =>
-          def uncapturedTypeVars(arg: tpd.Tree, capturedTypeVars: List[tpd.Tree]) =
+          def uncapturedTypeVars(arg: tpd.Tree, capturedTypeVars: List[tpd.Tree]): Set[Type] =
+            /* Sometimes arg is untyped when a splice pattern is ill-formed.
+             * Return early in such case.
+             * Refer to QuoteAndSplices::typedSplicePattern
+             */
+            if !arg.hasType then return Set.empty
+
             val capturedTypeVarsSet = capturedTypeVars.map(_.symbol).toSet
             new TypeAccumulator[Set[Type]] {
               def apply(x: Set[Type], tp: Type): Set[Type] =
