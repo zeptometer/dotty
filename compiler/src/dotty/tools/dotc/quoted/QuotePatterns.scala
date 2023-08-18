@@ -27,40 +27,46 @@ object QuotePatterns:
 
   /** Check for restricted patterns */
   def checkPattern(quotePattern: QuotePattern)(using Context): Unit =
-    val typevars = new tpd.TreeAccumulator[Set[Symbol]] {
-      override def apply(typevars: Set[Symbol], tree: tpd.Tree)(using Context): Set[Symbol] = tree match {
-        case _: SplicePattern => typevars
-        case tdef: TypeDef if tdef.symbol.isClass =>
-          val kind = if tdef.symbol.is(Module) then "objects" else "classes"
-          report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
-          typevars
-        case tree: NamedDefTree =>
-          if tree.name.is(NameKinds.WildcardParamName) then
-            report.warning(
-              "Use of `_` for lambda in quoted pattern. Use explicit lambda instead or use `$_` to match any term.",
-              tree.srcPos)
-          if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
-            report.error("Names cannot start with $ quote pattern", tree.namePos)
-          val typevars1 = tree match
+    def validatePatternAndCollectTypeVars(): Set[Symbol] = new tpd.TreeAccumulator[Set[Symbol]] {
+      override def apply(typevars: Set[Symbol], tree: tpd.Tree)(using Context): Set[Symbol] =
+        // Collect type variables
+        val typevars1 = tree match
             case tree @ DefDef(_, paramss, _, _) =>
               typevars union paramss.flatMap{ params => params match
                 case TypeDefs(tdefs) => tdefs.map(_.symbol)
                 case _ => List.empty
-              }.toSet
+              }.toSet union typevars
             case _ => typevars
-          foldOver(typevars1, tree)
-        case _: Match =>
-          report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
-          typevars
-        case _: Try =>
-          report.error("Implementation restriction: cannot match `try` expressions", tree.srcPos)
-          typevars
-        case _: Return =>
-          report.error("Implementation restriction: cannot match `return` statements", tree.srcPos)
-          typevars
-        case _ => foldOver(typevars, tree)
-      }
-    }.apply(Set.empty, quotePattern.body)
+
+        // Validate pattern
+        tree match
+          case _: SplicePattern => typevars1
+          case tdef: TypeDef if tdef.symbol.isClass =>
+            val kind = if tdef.symbol.is(Module) then "objects" else "classes"
+            report.error(em"Implementation restriction: cannot match $kind", tree.srcPos)
+            typevars1
+          case tree: NamedDefTree =>
+            if tree.name.is(NameKinds.WildcardParamName) then
+              report.warning(
+                "Use of `_` for lambda in quoted pattern. Use explicit lambda instead or use `$_` to match any term.",
+                tree.srcPos)
+            if tree.name.isTermName && !tree.nameSpan.isSynthetic && tree.name != nme.ANON_FUN && tree.name.startsWith("$") then
+              report.error("Names cannot start with $ quote pattern", tree.namePos)
+            foldOver(typevars1, tree)
+          case _: Match =>
+            report.error("Implementation restriction: cannot match `match` expressions", tree.srcPos)
+            typevars1
+          case _: Try =>
+            report.error("Implementation restriction: cannot match `try` expressions", tree.srcPos)
+            typevars1
+          case _: Return =>
+            report.error("Implementation restriction: cannot match `return` statements", tree.srcPos)
+            typevars1
+          case _ =>
+            foldOver(typevars1, tree)
+      }.apply(Set.empty, quotePattern.body)
+
+    val boundTypeVars = validatePatternAndCollectTypeVars()
 
     /*
      * This part checks well-formedness of arguments to hoas patterns.
@@ -87,7 +93,7 @@ object QuotePatterns:
             val capturedTypeVarsSet = capturedTypeVars.map(_.symbol).toSet
             new TypeAccumulator[Set[Type]] {
               def apply(x: Set[Type], tp: Type): Set[Type] =
-                if typevars.contains(tp.typeSymbol) && !capturedTypeVarsSet.contains(tp.typeSymbol) then
+                if boundTypeVars.contains(tp.typeSymbol) && !capturedTypeVarsSet.contains(tp.typeSymbol) then
                   foldOver(x + tp, tp)
                 else
                   foldOver(x, tp)
@@ -95,7 +101,7 @@ object QuotePatterns:
 
           for (typearg <- tree.typeargs) // case (1)
           do
-            if !typevars.contains(typearg.symbol) then
+            if !boundTypeVars.contains(typearg.symbol) then
               report.error("Type arguments of a hoas pattern needs to be defined inside the quoted pattern", typearg.srcPos)
           for (arg <- tree.args) // case (2)
           do
