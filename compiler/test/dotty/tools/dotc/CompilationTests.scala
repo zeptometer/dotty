@@ -138,6 +138,7 @@ class CompilationTests {
   @Test def runAll: Unit = {
     implicit val testGroup: TestGroup = TestGroup("runAll")
     aggregateTests(
+      compileFilesInDir("tests/run-custom-args/quoted-pattern-poly", defaultOptions.and("-language:experimental.quotedPatternsWithPolymorphicFunctions")),
       compileFilesInDir("tests/run", defaultOptions.and("-Ysafe-init")),
       compileFilesInDir("tests/run-deep-subtype", allowDeepSubtypes),
       compileFilesInDir("tests/run-custom-args/captures", allowDeepSubtypes.and("-language:experimental.captureChecking")),

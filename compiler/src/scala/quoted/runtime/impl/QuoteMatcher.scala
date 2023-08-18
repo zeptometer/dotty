@@ -431,20 +431,6 @@ class QuoteMatcher(debug: Boolean) {
                 case TypeTreeTypeTest(pattern) if isSubTypeUnderEnv(scrutinee, pattern) => matched
                 case _ => notMatched
 
-            // TODO-18271: We might want to restrict type bounds/type defs to match
-            // only when they are empty bounds (<: Nothing :> Any)
-            // to keep behavioral difference minimal
-            case TypeBoundsTree(sclo, schi, scalias) =>
-              pattern match
-                case TypeBoundsTree(ptlo, pthi, ptalias) =>
-                  sclo =?= ptlo &&& schi =?= pthi &&& scalias =?= ptalias
-                case _ => notMatched
-
-            case TypeDef(_, rhs1) =>
-              pattern match
-                case TypeDef(_, rhs2) => rhs1 =?= rhs2
-                case _ => notMatched
-
             /* Match val */
             case scrutinee @ ValDef(_, tpt1, _) =>
               pattern match
@@ -468,6 +454,20 @@ class QuoteMatcher(debug: Boolean) {
                           notMatched
                       case _ => matched
 
+                  /**
+                    * Implementation restriction: The current implementation matches type parameters
+                    * only when they have empty bounds (>: Nothing <: Any)
+                    */
+                  def matchTypeDef(sctypedef: TypeDef, pttypedef: TypeDef): MatchingExprs = sctypedef match
+                    case TypeDef(_, TypeBoundsTree(sclo, schi, EmptyTree))
+                      if sclo.tpe == defn.NothingType && schi.tpe == defn.AnyType =>
+                      pttypedef match
+                        case TypeDef(_, TypeBoundsTree(ptlo, pthi, EmptyTree))
+                          if sclo.tpe == defn.NothingType && schi.tpe == defn.AnyType =>
+                          matched
+                        case _ => notMatched
+                    case _ => notMatched
+
                   def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
                     (scparamss, ptparamss) match {
                       case (ValDefs(scparams) :: screst, ValDefs(ptparams) :: ptrest) =>
@@ -480,7 +480,7 @@ class QuoteMatcher(debug: Boolean) {
                         val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
                         (resEnv, mr1 &&& mrrest)
                       case (TypeDefs(scparams) :: screst, TypeDefs(ptparams) :: ptrest) =>
-                        val mr1 = matchLists(scparams, ptparams)(_ =?= _)
+                        val mr1 = matchLists(scparams, ptparams)(matchTypeDef)
                         val Env(termEnv, typeEnv) = summon[Env]
                         val newEnv = new Env(
                           termEnv = termEnv,
