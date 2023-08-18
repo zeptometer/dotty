@@ -4,3 +4,4 @@ case 4 matched => truthy
 case 5 matchd => 1
 case 7 matchd => 1
 case 8 matched => (1,str)
+case 9 matched => zero

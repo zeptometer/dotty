@@ -5,3 +5,4 @@
     println(testExpr([C, D] => (x : C, f : C => D) => f(x))) // Should match case 4
     println(testExpr([B] => (x : List[B], y : B) => x.indexOf(y))) // Should match case 7
     println(testExpr([B] => (x : B) => [C] => (y : C) => (x, y))) // Should match case 8
+    println(testExpr([C, D] => (x : Map[C, D], y: C) => x.get(y)))

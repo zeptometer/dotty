@@ -17,4 +17,6 @@ def testExprImpl1(body: Expr[Any])(using Quotes): Expr[String] =
       '{ "case 7 matchd => " + $a[Int](List(1, 2, 3), 2) }
     case '{ [A] => (x : A) => [B] => (y : B) => $a[A, B](x, y) : (A, B) } =>
       '{ "case 8 matched => " + $a[Int, String](1, "str")}
+    case '{ [A, B] => (x : Map[A, B], y: A) => $a[A, B](x, y) : Option[B] } =>
+      '{ "case 9 matched => " + $a[Int, String](Map(0 -> "zero", 1 -> "one"), 0).getOrElse("failed") }
     case _ => Expr("not matched")
