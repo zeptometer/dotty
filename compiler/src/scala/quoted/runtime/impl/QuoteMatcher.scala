@@ -703,7 +703,7 @@ class QuoteMatcher(debug: Boolean) {
 
   extension (self: MatchingExprs)
       /** Concatenates the contents of two successful matchings */
-      def &&& (that: MatchingExprs): MatchingExprs = self ++ that
+      private def &&& (that: MatchingExprs): MatchingExprs = self ++ that
   end extension
 
   // TODO-18271: Duplicate with QuotePatterns.unrollHkNestedPairsTypeTree
