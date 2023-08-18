@@ -113,16 +113,17 @@ class QuoteMatcher(debug: Boolean) {
   /** Sequence of matched expressions.
    *  These expressions are part of the scrutinee and will be bound to the quote pattern term splices.
    */
-  type MatchingExprs = Seq[MatchResult]
+  private type MatchingExprs = Seq[MatchResult]
 
-  /** A map relating equivalent symbols from the scrutinee and the pattern
+  /** TODO-18271: update
+    * A map relating equivalent symbols from the scrutinee and the pattern
     *  For example in
     *  ```
     *  '{val a = 4; a * a} match case '{ val x = 4; x * x }
     *  ```
     *  when matching `a * a` with `x * x` the environment will contain `Map(a -> x)`.
     */
-  private type Env = Map[Symbol, Symbol]
+  private case class Env(val termEnv: Map[Symbol, Symbol], val typeEnv: Map[Symbol, Symbol])
 
   private def withEnv[T](env: Env)(body: Env ?=> T): T = body(using env)
 
@@ -133,7 +134,7 @@ class QuoteMatcher(debug: Boolean) {
     val (pat1, typeHoles, ctx1) = instrumentTypeHoles(pattern)
     inContext(ctx1) {
       optional {
-        given Env = Map.empty
+        given Env = new Env(Map.empty, Map.empty)
         scrutinee =?= pat1
       }.map { matchings =>
         lazy val spliceScope = SpliceScope.getCurrent
@@ -237,6 +238,26 @@ class QuoteMatcher(debug: Boolean) {
           case _ => None
       end TypeTreeTypeTest
 
+      /* Some of method symbols in arguments of higher-order term hole are eta-expanded.
+        * e.g.
+        * g: (Int) => Int
+        * => {
+        *   def $anonfun(y: Int): Int = g(y)
+        *   closure($anonfun)
+        * }
+        *
+        * f: (using Int) => Int
+        * => f(using x)
+        * This function restores the symbol of the original method from
+        * the eta-expanded function.
+        */
+      def getCapturedIdent(arg: Tree)(using Context): Ident =
+        arg match
+          case id: Ident => id
+          case Apply(fun, _) => getCapturedIdent(fun)
+          case Block((ddef: DefDef) :: _, _: Closure) => getCapturedIdent(ddef.rhs)
+          case Typed(expr, _) => getCapturedIdent(expr)
+
       def runMatch(): optional[MatchingExprs] = pattern match
 
         /* Term hole */
@@ -263,30 +284,12 @@ class QuoteMatcher(debug: Boolean) {
         case Apply(TypeApply(Ident(_), List(TypeTree())), SeqLiteral(args, _) :: Nil)
             if pattern.symbol.eq(defn.QuotedRuntimePatterns_higherOrderHole) =>
 
-          /* Some of method symbols in arguments of higher-order term hole are eta-expanded.
-           * e.g.
-           * g: (Int) => Int
-           * => {
-           *   def $anonfun(y: Int): Int = g(y)
-           *   closure($anonfun)
-           * }
-           *
-           * f: (using Int) => Int
-           * => f(using x)
-           * This function restores the symbol of the original method from
-           * the eta-expanded function.
-           */
-          def getCapturedIdent(arg: Tree)(using Context): Ident =
-            arg match
-              case id: Ident => id
-              case Apply(fun, _) => getCapturedIdent(fun)
-              case Block((ddef: DefDef) :: _, _: Closure) => getCapturedIdent(ddef.rhs)
-              case Typed(expr, _) => getCapturedIdent(expr)
-
           val env = summon[Env]
           val capturedIds = args.map(getCapturedIdent)
           val capturedSymbols = capturedIds.map(_.symbol)
-          val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v))
+          val captureEnv = Env(
+            termEnv = env.termEnv.filter((k, v) => !capturedIds.map(_.symbol).contains(v)),
+            typeEnv = env.typeEnv)
           withEnv(captureEnv) {
             scrutinee match
               case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), Nil, env)
@@ -298,31 +301,12 @@ class QuoteMatcher(debug: Boolean) {
         case Apply(TypeApply(Ident(_), List(TypeTree(), targs)), SeqLiteral(args, _) :: Nil)
             if pattern.symbol.eq(defn.QuotedRuntimePatterns_higherOrderHoleWithTypes) =>
 
-          /* Some of method symbols in arguments of higher-order term hole are eta-expanded.
-           * e.g.
-           * g: (Int) => Int
-           * => {
-           *   def $anonfun(y: Int): Int = g(y)
-           *   closure($anonfun)
-           * }
-           *
-           * f: (using Int) => Int
-           * => f(using x)
-           * This function restores the symbol of the original method from
-           * the eta-expanded function.
-           */
-          def getCapturedIdent(arg: Tree)(using Context): Ident =
-            arg match
-              case id: Ident => id
-              case Apply(fun, _) => getCapturedIdent(fun)
-              case Block((ddef: DefDef) :: _, _: Closure) => getCapturedIdent(ddef.rhs)
-              case Typed(expr, _) => getCapturedIdent(expr)
-
           val env = summon[Env]
           val capturedIds = args.map(getCapturedIdent)
           val capturedTargs = unrollHkNestedPairsTypeTree(targs)
-          val capturedSymbols = Set.from(capturedIds.map(_.symbol) ++ capturedTargs.map(_.symbol))
-          val captureEnv = env.filter((k, v) => !capturedSymbols.contains(v))
+          val captureEnv = Env(
+            termEnv = env.termEnv.filter((k, v) => !capturedIds.map(_.symbol).contains(v)),
+            typeEnv = env.typeEnv.filter((k, v) => !capturedTargs.map(_.symbol).contains(v)))
           withEnv(captureEnv) {
             scrutinee match
               case ClosedPatternTerm(scrutinee) => matchedOpen(scrutinee, pattern.tpe, capturedIds, args.map(_.tpe), capturedTargs.map(_.tpe), env)
@@ -383,8 +367,12 @@ class QuoteMatcher(debug: Boolean) {
               pattern match
                 case Block(stat2 :: stats2, expr2) =>
                   val newEnv = (stat1, stat2) match {
-                    case (stat1: MemberDef, stat2: MemberDef) =>
-                      summon[Env] + (stat1.symbol -> stat2.symbol)
+                    case (stat1: ValOrDefDef, stat2: ValOrDefDef) =>
+                      val Env(termEnv, typeEnv) = summon[Env]
+                      new Env(termEnv + (stat1.symbol -> stat2.symbol), typeEnv)
+                    case (stat1: TypeDef, stat2: TypeDef) =>
+                      val Env(termEnv, typeEnv) = summon[Env]
+                      new Env(termEnv, typeEnv + (stat1.symbol -> stat2.symbol))
                     case _ =>
                       summon[Env]
                   }
@@ -461,7 +449,9 @@ class QuoteMatcher(debug: Boolean) {
             case scrutinee @ ValDef(_, tpt1, _) =>
               pattern match
                 case pattern @ ValDef(_, tpt2, _) if checkValFlags() =>
-                  def rhsEnv = summon[Env] + (scrutinee.symbol -> pattern.symbol)
+                  def rhsEnv =
+                    val Env(termEnv, typeEnv) = summon[Env]
+                    new Env(termEnv + (scrutinee.symbol -> pattern.symbol), typeEnv)
                   tpt1 =?= tpt2 &&& withEnv(rhsEnv)(scrutinee.rhs =?= pattern.rhs)
                 case _ => notMatched
 
@@ -480,9 +470,22 @@ class QuoteMatcher(debug: Boolean) {
 
                   def matchParamss(scparamss: List[ParamClause], ptparamss: List[ParamClause])(using Env): optional[(Env, MatchingExprs)] =
                     (scparamss, ptparamss) match {
-                      case (scparams :: screst, ptparams :: ptrest) =>
+                      case (ValDefs(scparams) :: screst, ValDefs(ptparams) :: ptrest) =>
                         val mr1 = matchLists(scparams, ptparams)(_ =?= _)
-                        val newEnv = summon[Env] ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol))
+                        val Env(termEnv, typeEnv) = summon[Env]
+                        val newEnv = new Env(
+                          termEnv = termEnv ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol)),
+                          typeEnv = typeEnv
+                        )
+                        val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
+                        (resEnv, mr1 &&& mrrest)
+                      case (TypeDefs(scparams) :: screst, TypeDefs(ptparams) :: ptrest) =>
+                        val mr1 = matchLists(scparams, ptparams)(_ =?= _)
+                        val Env(termEnv, typeEnv) = summon[Env]
+                        val newEnv = new Env(
+                          termEnv = termEnv,
+                          typeEnv = typeEnv ++ scparams.map(_.symbol).zip(ptparams.map(_.symbol)),
+                        )
                         val (resEnv, mrrest) = withEnv(newEnv)(matchParamss(screst, ptrest))
                         (resEnv, mr1 &&& mrrest)
                       case (Nil, Nil) => (summon[Env], matched)
@@ -490,8 +493,8 @@ class QuoteMatcher(debug: Boolean) {
                     }
 
                   val ematch = matchErasedParams(scrutinee.tpe.widenTermRefExpr, pattern.tpe.widenTermRefExpr)
-                  val (pEnv, pmatch) = matchParamss(paramss1, paramss2)
-                  val defEnv = pEnv + (scrutinee.symbol -> pattern.symbol)
+                  val (Env(termEnv, typeEnv), pmatch) = matchParamss(paramss1, paramss2)
+                  val defEnv = Env(termEnv + (scrutinee.symbol -> pattern.symbol), typeEnv)
 
                   ematch
                   &&& pmatch
@@ -565,14 +568,18 @@ class QuoteMatcher(debug: Boolean) {
         else scrutinee
       case _ => scrutinee
     val pattern = patternTree.symbol
+    val Env(termEnv, typeEnv) = summon[Env]
 
     devirtualizedScrutinee == pattern
-    || summon[Env].get(devirtualizedScrutinee).contains(pattern)
+    || termEnv.get(devirtualizedScrutinee).contains(pattern)
+    || typeEnv.get(devirtualizedScrutinee).contains(pattern)
     || devirtualizedScrutinee.allOverriddenSymbols.contains(pattern)
 
   private def isSubTypeUnderEnv(scrutinee: Tree, pattern: Tree)(using Env, Context): Boolean =
-    val env = summon[Env]
-    scrutinee.subst(env.keys.toList, env.values.toList).tpe <:< pattern.tpe
+    val env = summon[Env].typeEnv
+    val scType = if env.isEmpty then scrutinee.tpe
+      else scrutinee.subst(env.keys.toList, env.values.toList).tpe
+    scType <:< pattern.tpe
 
   private object ClosedPatternTerm {
     /** Matches a term that does not contain free variables defined in the pattern (i.e. not defined in `Env`) */
@@ -581,23 +588,24 @@ class QuoteMatcher(debug: Boolean) {
 
     /** Return all free variables of the term defined in the pattern (i.e. defined in `Env`) */
     def freePatternVars(term: Tree)(using Env, Context): Set[Symbol] =
+      val Env(termEnv, typeEnv) = summon[Env]
       val typeAccumulator = new TypeAccumulator[Set[Symbol]] {
         def apply(x: Set[Symbol], tp: Type): Set[Symbol] = tp match
-          case tp: TypeRef if summon[Env].contains(tp.typeSymbol) => foldOver(x + tp.typeSymbol, tp)
-          case tp: TermRef if summon[Env].contains(tp.termSymbol) => foldOver(x + tp.termSymbol, tp)
+          case tp: TypeRef if typeEnv.contains(tp.typeSymbol) => foldOver(x + tp.typeSymbol, tp)
+          case tp: TermRef if termEnv.contains(tp.termSymbol) => foldOver(x + tp.termSymbol, tp)
           case _ => foldOver(x, tp)
       }
       val treeAccumulator = new TreeAccumulator[Set[Symbol]] {
         def apply(x: Set[Symbol], tree: Tree)(using Context): Set[Symbol] =
           tree match
-            case tree: Ident if summon[Env].contains(tree.symbol) => foldOver(typeAccumulator(x, tree.tpe) + tree.symbol, tree)
+            case tree: Ident if termEnv.contains(tree.symbol) => foldOver(typeAccumulator(x, tree.tpe) + tree.symbol, tree)
             case tree: TypeTree => typeAccumulator(x, tree.tpe)
             case _ => foldOver(x, tree)
       }
       treeAccumulator(Set.empty, term)
   }
 
-  enum MatchResult:
+  private enum MatchResult:
     /** Closed pattern extracted value
      *  @param tree Scrutinee sub-tree that matched
      */
@@ -624,12 +632,13 @@ class QuoteMatcher(debug: Boolean) {
     def toExpr(mapTypeHoles: Type => Type, spliceScope: Scope)(using Context): Expr[Any] = this match
       case MatchResult.ClosedTree(tree) =>
         new ExprImpl(tree, spliceScope)
-      case MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, typeArgs, env) =>
+      case MatchResult.OpenTree(tree, patternTpe, argIds, argTypes, typeArgs, Env(termEnv, typeEnv)) =>
         val names: List[TermName] = argIds.map(_.symbol.name.asTermName)
         val paramTypes = argTypes.map(tpe => mapTypeHoles(tpe.widenTermRefExpr))
         val ptTypeVarSymbols = typeArgs.map(_.typeSymbol)
+        val isNotPoly = typeArgs.isEmpty
 
-        val methTpe = if typeArgs.isEmpty then
+        val methTpe = if isNotPoly then
           MethodType(names)(_ => paramTypes, _ => mapTypeHoles(patternTpe))
         else
           val typeArgs1 = PolyType.syntheticParamNames(typeArgs.length)
@@ -644,7 +653,7 @@ class QuoteMatcher(debug: Boolean) {
         val meth = newAnonFun(ctx.owner, methTpe)
 
         def bodyFn(lambdaArgss: List[List[Tree]]): Tree = {
-          val (typeParams, params) = if typeArgs.isEmpty then
+          val (typeParams, params) = if isNotPoly then
               (List.empty, lambdaArgss.head)
             else
               (lambdaArgss.head.map(_.tpe), lambdaArgss.tail.head)
@@ -653,11 +662,11 @@ class QuoteMatcher(debug: Boolean) {
           val argsMap = argIds.view.map(_.symbol).zip(params).toMap
 
           val body = new TreeTypeMap(
-            typeMap = if typeArgs.isEmpty then IdentityTypeMap
+            typeMap = if isNotPoly then IdentityTypeMap
               else new TypeMap() {
                 override def apply(tp: Type): Type = tp match {
                   case tr: TypeRef if tr.prefix.eq(NoPrefix) =>
-                    env.get(tr.symbol).flatMap(typeArgsMap.get).getOrElse(tr)
+                    typeEnv.get(tr.symbol).flatMap(typeArgsMap.get).getOrElse(tr)
                   case tp => mapOver(tp)
                 }
               },
@@ -669,8 +678,8 @@ class QuoteMatcher(debug: Boolean) {
                   * f has a method type `(x: Int): Int` and  `f` maps to `g`, `p` should hold
                   * `g.apply(0)` because the type of `g` is `Int => Int` due to eta expansion.
                   */
-                  case Apply(fun, args) if env.contains(tree.symbol) => transform(fun).select(nme.apply).appliedToArgs(args.map(transform))
-                  case tree: Ident => env.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
+                  case Apply(fun, args) if termEnv.contains(tree.symbol) => transform(fun).select(nme.apply).appliedToArgs(args.map(transform))
+                  case tree: Ident => termEnv.get(tree.symbol).flatMap(argsMap.get).getOrElse(tree)
                   case tree => super.transform(tree)
             }.transform
           ).transform(tree)
