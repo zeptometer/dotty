@@ -101,7 +101,7 @@ object language:
 
     /** Experimental support for quote pattern matching with polymorphic functions
      *
-     *  @see TODO-18271
+     *  @see [[https://dotty.epfl.ch/docs/reference/experimental/quoted-patterns-with-polymorphic-functions]]
      */
     @compileTimeOnly("`quotedPatternsWithPolymorphicFunctions` can only be used at compile time in import statements")
     object quotedPatternsWithPolymorphicFunctions
