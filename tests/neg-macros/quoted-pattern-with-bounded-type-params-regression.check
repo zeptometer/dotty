@@ -1,0 +1,12 @@
+-- Error: tests/neg-macros/quoted-pattern-with-bounded-type-params.scala:10:48 -----------------------------------------
+10 |    case '{ [A <: Int, B] => (x : A, y : A) => $b[A](x, y) : A } => // error
+   |                                                ^
+   |                                                Type must be fully defined.
+   |                                                Consider annotating the splice using a type ascription:
+   |                                                  (${b}: XYZ).
+-- [E006] Not Found Error: tests/neg-macros/quoted-pattern-with-bounded-type-params.scala:11:10 ------------------------
+11 |      '{ $b[String]("truthy", "falsy") } // error
+   |          ^
+   |          Not found: b
+   |
+   | longer explanation available when compiling with `-explain`

@@ -1,4 +1,5 @@
 import scala.quoted.*
+import scala.language.experimental.quotedPatternsWithPolymorphicFunctions
 
 def test(body: Expr[Any])(using Quotes): Expr[String] =
   body match

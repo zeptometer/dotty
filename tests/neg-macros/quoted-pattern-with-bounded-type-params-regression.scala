@@ -1,7 +1,8 @@
-/*
- * Supporting hoas quote pattern with bounded type variable
- * is future todo.
- */
+/**
+  * Supporting hoas quote pattern with bounded type variable
+  * is future todo.
+  * Refer to: quoted-pattern-with-bounded-type-params.scala
+  */
 
 import scala.quoted.*
 

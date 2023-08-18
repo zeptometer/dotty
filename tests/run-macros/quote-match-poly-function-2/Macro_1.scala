@@ -1,4 +1,5 @@
 import scala.quoted.*
+import scala.language.experimental.quotedPatternsWithPolymorphicFunctions
 
 inline def testExpr(inline body: Any) = ${ testExprImpl1('body) }
 def testExprImpl1(body: Expr[Any])(using Quotes): Expr[String] =

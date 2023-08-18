@@ -1,7 +1,5 @@
-/**
-  * Refer to: neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala
-  */
 import scala.quoted.*
+import scala.language.experimental.quotedPatternsWithPolymorphicFunctions
 
 def test(body: Expr[Any])(using Quotes): Expr[String] =
   body match

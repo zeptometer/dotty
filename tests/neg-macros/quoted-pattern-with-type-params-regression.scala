@@ -1,3 +1,6 @@
+/**
+  * Refer to: quoted-pattern-with-type-params.scala
+  */
 import scala.quoted.*
 
 def test(body: Expr[Any])(using Quotes): Expr[String] =

@@ -1,10 +1,10 @@
-/**
-  * Supporting hoas quote pattern with bounded type variable
-  * is future todo.
-  * Refer to: neg-custom-args/quoted-pattern-poly/quoted-pattern-with-bounded-type-params.scala
-  */
+/*
+ * Supporting hoas quote pattern with bounded type variable
+ * is future todo.
+ */
 
 import scala.quoted.*
+import scala.language.experimental.quotedPatternsWithPolymorphicFunctions
 
 def test(body: Expr[Any])(using Quotes): Expr[String] =
   body match
