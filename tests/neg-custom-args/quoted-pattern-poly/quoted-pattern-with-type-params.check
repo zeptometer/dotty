@@ -1,12 +1,12 @@
 -- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala:5:32 -------------------------
-5 |    case '{ [A] => (x : A) => $b[A] : (A => A) } => // error
+5 |    case '{ [A] => (x : A) => $b[A] : (A => A) } => ??? // error
   |                              ^^^^^
   |                              Implementation restriction: A higher-order pattern must carry value arguments
--- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala:7:33 -------------------------
-7 |    case '{ [A] => (x : A) => $b(x) : (A => A) } => // error
+-- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala:6:33 -------------------------
+6 |    case '{ [A] => (x : A) => $b(x) : (A => A) } => ??? // error
   |                                 ^
   |                                Type variables that this argument depends on are not captured in this hoas pattern
--- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala:9:26 -------------------------
-9 |    case '{ (a:Int) => $b[Int](a) : String } => // error
+-- Error: tests/neg-custom-args/quoted-pattern-poly/quoted-pattern-with-type-params.scala:7:26 -------------------------
+7 |    case '{ (a:Int) => $b[Int](a) : String } => ??? // error
   |                          ^^^
   |                          Type arguments of a hoas pattern needs to be defined inside the quoted pattern
