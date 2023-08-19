@@ -750,7 +750,6 @@ class RefinedPrinter(_ctx: Context) extends PlainPrinter(_ctx) {
         val close = if (body.isTerm) keywordStr("}") else keywordStr("]")
         keywordStr("'") ~ quotesText ~ open ~ bindingsText ~ toTextGlobal(body) ~ close
       case SplicePattern(pattern, typeargs, args) =>
-        // TODO-18271: Add tests?
         val spliceTypeText = (keywordStr("[") ~ toTextGlobal(tree.typeOpt) ~ keywordStr("]")).provided(printDebug && tree.typeOpt.exists)
         keywordStr("$") ~ spliceTypeText ~ {
           if typeargs.isEmpty && args.isEmpty then keywordStr("{") ~ inPattern(toText(pattern)) ~ keywordStr("}")

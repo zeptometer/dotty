@@ -122,9 +122,6 @@ trait QuotesAndSplices {
       val typedTypeargs = tree.typeargs.map {
         case typearg: untpd.Ident =>
           val typedTypearg = typedType(typearg)
-          /* TODO-18271: Allow type bounds?
-           * (NOTE: Needs non-trivial extension to type system)
-           */
           val bounds = ctx.gadt.fullBounds(typedTypearg.symbol)
           if bounds != null && bounds != TypeBounds.empty then
             report.error("Implementation restriction: Type arguments to Open pattern are expected to have no bounds", typearg.srcPos)
@@ -179,17 +176,14 @@ trait QuotesAndSplices {
   /** Types a splice applied to some type arguments and arguments
    *   `$f[targs1, ..., targsn](arg1, ..., argn)` in a quote pattern.
    *
-   * TODO-18217: Remove follwing notes on complete
-   * Refer to: typedTypeApply
+   * Refer to: typedAppliedSplice
    */
   def typedAppliedSpliceWithTypes(tree: untpd.Apply, pt: Type)(using Context): Tree = {
     assert(ctx.mode.isQuotedPattern)
     val untpd.Apply(typeApplyTree @ untpd.TypeApply(splice: untpd.SplicePattern, typeargs), args) = tree: @unchecked
     def isInBraces: Boolean = splice.span.end != splice.body.span.end
     if isInBraces then // ${x}[...](...) match an application
-      // TODO-18127: typedTypeApply cares about named arguments. Do we want to care as well?
       val typedTypeargs = typeargs.map(arg => typedType(arg))
-      // TODO-18217: Why do we use typedExpr here?
       val typedArgs = args.map(arg => typedExpr(arg))
       val argTypes = typedArgs.map(_.tpe.widenTermRefExpr)
       val splice1 = typedSplicePattern(splice, ProtoTypes.PolyProto(typedArgs, defn.FunctionOf(argTypes, pt)))
@@ -198,7 +192,6 @@ trait QuotesAndSplices {
     else // $x[...](...) higher-order quasipattern
       // Empty args is allowed
       if typeargs.isEmpty then
-         // TODO-18271: Better error message
          report.error("Missing type arguments for open pattern", tree.srcPos)
       typedSplicePattern(untpd.cpy.SplicePattern(tree)(splice.body, typeargs, args), pt)
   }
